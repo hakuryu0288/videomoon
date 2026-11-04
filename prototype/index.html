@@ -1042,6 +1042,9 @@ async function exportTakes(list){
         toast('この画面では書き出せませんでした');return}}return}
   if(EMBED){openSheet(`<h3>書き出し</h3><p>Android版では、${list.length>1?list.length+'本の動画を':'この動画を'}<b>ムービー › videomoon</b> フォルダに保存し、ギャラリーやSNSアプリからすぐ使えるようにします（MP4 ・ ${ST.codec}）。</p>
     <p class="muted small">この表示環境では端末へのファイル保存ができません。</p><button class="btn sec" style="width:100%" id="exOk">閉じる</button>`);$('#exOk').onclick=closeSheet;return}
+  // iPhoneなど：共有シートから「ビデオを保存」で写真アプリに入れられる
+  try{const files=list.map(t=>new File([t.blob],fileName(t),{type:t.blob.type||t.mime}));
+    if(navigator.canShare&&navigator.canShare({files})){navigator.share({files}).then(()=>toast('共有シートから保存しました')).catch(e=>{if(e&&e.name!=='AbortError')toast('共有できませんでした')});return}}catch(e){}
   list.forEach((t,i)=>setTimeout(()=>{const u=URL.createObjectURL(t.blob),a=document.createElement('a');a.href=u;a.download=fileName(t);document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000)},i*400));
   toast(list.length>1?list.length+'件を書き出しました':'書き出しました')}
 
