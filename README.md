@@ -1,5 +1,8 @@
 # videomoon（Android）
 
+- **APKのダウンロード（Android端末で開く）：** https://github.com/hakuryu0288/videomoon/releases/download/latest/videomoon-debug.apk
+- **ブラウザ版（iPhone・PCで試す）：** https://hakuryu0288.github.io/videomoon/
+
 好きな曲の好きな部分を流しながら、なめらかな60fpsで撮れる動画カメラ。
 動画に入るのは流した音楽だけで、周りの音やマイクの音は一切入りません。
 
@@ -61,9 +64,7 @@
 ### B. GitHub Actions（PCにAndroid Studioがなくても可）
 1. このフォルダをGitHubのリポジトリにpush
 2. 「Actions」タブ › **Build APK** が自動で走る
-3. 終わったら実行結果の「Artifacts」から `videomoon-debug-apk` をダウンロード → Android端末にインストール
-
-※ この一式は、Android SDKに接続できない環境で書いたため、まだ一度もコンパイルしていません。最初のビルドでエラーが出たら、そのログを貼ってもらえればすぐ直します。
+3. 終わると「Releases › latest」に `videomoon-debug.apk` が自動で置かれます（main に push するたびに更新）
 
 ## 動作条件
 - Android 10 以上
