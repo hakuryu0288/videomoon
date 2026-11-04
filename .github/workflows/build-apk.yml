@@ -2,7 +2,12 @@ name: Build APK
 
 on:
   push:
+    branches: [main]
+    paths-ignore: ["prototype/**", "README.md", ".github/workflows/pages.yml"]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -28,3 +33,17 @@ jobs:
         with:
           name: videomoon-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk videomoon-debug.apk
+      - name: Publish to "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: videomoon 最新ビルド
+          body: |
+            main ブランチの最新コードから自動で作られたAPKです。
+            Android端末のブラウザで videomoon-debug.apk をダウンロードし、開いてインストールしてください。
+            （初回は「提供元不明のアプリ」のインストール許可が必要です）
+          prerelease: true
+          make_latest: true
+          files: videomoon-debug.apk

@@ -28,7 +28,10 @@ android {
     }
     kotlinOptions {
         jvmTarget = "17"
-        freeCompilerArgs += listOf("-opt-in=androidx.media3.common.util.UnstableApi")
+    }
+    lint {
+        // Media3の「UnstableApi」（書き出し・フェード処理で使用）をリリースビルドで止めない
+        disable += "UnsafeOptInUsageError"
     }
     buildFeatures { compose = true }
 }
