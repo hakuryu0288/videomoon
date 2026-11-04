@@ -34,7 +34,7 @@ fun SettingsScreen(vm: MainViewModel) {
         Group("撮影")
         SettingRow("フレームレート", "60fpsでなめらかに。24は映画風") { Seg(listOf(24 to "24", 30 to "30", 60 to "60"), s.fps, { v -> set { it.copy(fps = v) } }) }
         SettingRow("解像度") { Seg(listOf("720" to "720p", "1080" to "1080p", "4K" to "4K"), s.quality, { v -> set { it.copy(quality = v) } }) }
-        SettingRow("向き") { Seg(listOf(false to "縦", true to "横"), s.landscape, { v -> set { it.copy(landscape = v) } }) }
+        SettingRow("向き", "自動：横に持てば横長、縦に持てば縦長で撮影") { Seg(listOf("auto" to "自動", "portrait" to "縦", "landscape" to "横"), s.orientationMode, { v -> set { it.copy(orientationMode = v) } }) }
         SettingRow("手ブレ補正", "オンにすると画角が少し狭くなります") { Toggle(s.stabilization) { v -> set { it.copy(stabilization = v) } } }
         SettingRow("フリッカー低減", "照明のちらつきを抑えます。東日本50Hz／西日本60Hz") { Seg(listOf(50 to "50Hz", 60 to "60Hz"), s.flickerHz, { v -> set { it.copy(flickerHz = v) } }) }
 

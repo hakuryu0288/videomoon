@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.displayCutoutPadding
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -41,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -72,9 +76,11 @@ fun AppRoot(vm: MainViewModel) {
         }
     }
 
-    Box(Modifier.fillMaxSize().background(VM.Night)) {
-        Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f)) {
+    val land = LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val showNav = !recording && trimId == null
+    // 回転してレイアウトが変わっても撮影画面の状態（カメラ・露出設定など）を保つ
+    val content = remember {
+        movableContentOf {
                 val tid = trimId
                 when {
                     tid != null -> TrimScreen(vm, tid, onBack = { trimId = null }, onShoot = { trimId = null; tab = Tab.Camera })
@@ -88,8 +94,21 @@ fun AppRoot(vm: MainViewModel) {
                     tab == Tab.Library -> LibraryScreen(vm, onOpen = { playerId = it })
                     tab == Tab.Settings -> SettingsScreen(vm)
                 }
+        }
+    }
+
+    Box(Modifier.fillMaxSize().background(VM.Night)) {
+        if (land) {
+            // 横向き：左にタブを縦に並べる（撮影画面を広く使う）
+            Row(Modifier.fillMaxSize()) {
+                if (showNav) SideRail(tab) { tab = it }
+                Box(Modifier.weight(1f)) { content() }
             }
-            if (!recording && trimId == null) BottomBar(tab) { tab = it }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f)) { content() }
+                if (showNav) BottomBar(tab) { tab = it }
+            }
         }
 
         playerId?.let { id ->
@@ -119,6 +138,32 @@ fun AppRoot(vm: MainViewModel) {
         }
 
         SnackbarHost(snackbar, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 56.dp))
+    }
+}
+
+@Composable
+private fun SideRail(tab: Tab, onSelect: (Tab) -> Unit) {
+    Column(
+        Modifier
+            .fillMaxHeight()
+            .background(VM.Night)
+            .displayCutoutPadding()
+            .navigationBarsPadding()
+            .width(68.dp)
+            .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Tab.entries.forEach { t ->
+            val on = t == tab
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { onSelect(t) }.padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(t.icon, t.label, tint = if (on) VM.Moon else VM.Dim, modifier = Modifier.size(24.dp))
+                Text(t.label, color = if (on) VM.Moon else VM.Dim, fontSize = 10.sp, maxLines = 1)
+            }
+        }
     }
 }
 

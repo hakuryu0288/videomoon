@@ -6,7 +6,10 @@ import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.SystemClock
-import android.view.OrientationEventListener
+import android.app.Activity
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.hardware.display.DisplayManager
 import android.view.Surface
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,7 +29,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.displayCutoutPadding
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +39,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -73,6 +79,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -172,34 +179,50 @@ private fun CameraContent(
     val busyNow = counting > 0 || phase != RecordController.Phase.Idle
     LaunchedEffect(busyNow) { onRecordingChange(busyNow) }
 
+    // ---- 画面の向き ----
+    // 自動：端末を回すと画面も回り、録画も横長/縦長になる。録画中は向きを固定する
+    val land = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val activity = context as? Activity
+    DisposableEffect(settings.orientationMode, busyNow) {
+        activity?.requestedOrientation = when {
+            busyNow -> ActivityInfo.SCREEN_ORIENTATION_LOCKED
+            settings.orientationMode == "portrait" -> ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT
+            settings.orientationMode == "landscape" -> ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
+            else -> ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+        }
+        onDispose { }
+    }
+    DisposableEffect(Unit) { onDispose { activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER } }
+
+    // 画面の回転（左右どちらに倒したかも含む）を録画の向きに反映
+    var rotation by remember { mutableIntStateOf(ContextCompat.getDisplayOrDefault(context).rotation) }
+    DisposableEffect(Unit) {
+        val dm = context.getSystemService(DisplayManager::class.java)
+        val l = object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) {}
+            override fun onDisplayRemoved(displayId: Int) {}
+            override fun onDisplayChanged(displayId: Int) { rotation = ContextCompat.getDisplayOrDefault(context).rotation }
+        }
+        dm.registerDisplayListener(l, null)
+        onDispose { dm.unregisterDisplayListener(l) }
+    }
+
     // ---- カメラの起動（設定が変わったら組み直す） ----
-    val baseRotation = if (settings.landscape) Surface.ROTATION_90 else Surface.ROTATION_0
     val cfg = CameraEngine.Config(
         front = settings.frontCamera, photo = photoMode, fps = settings.fps, quality = settings.quality,
-        stabilization = settings.stabilization, mirrorSave = settings.mirrorSave, rotation = baseRotation,
+        stabilization = settings.stabilization, mirrorSave = settings.mirrorSave, rotation = Surface.ROTATION_0,
     )
     LaunchedEffect(cfg) {
         try {
             engine.bind(owner, previewView, cfg)
+            engine.setRotation(rotation)
         } catch (e: Exception) {
             vm.messages.tryEmit("カメラを起動できませんでした：${e.message}")
         }
     }
+    LaunchedEffect(rotation) { if (!busyNow) engine.setRotation(rotation) }
     LaunchedEffect(caps.note) { caps.note?.let { vm.messages.tryEmit(it) } }
     LaunchedEffect(pro, caps, settings.flickerHz) { if (caps.ready) engine.applyPro(pro, caps.actualFps, settings.flickerHz) }
-
-    // 横向き撮影：端末の向きに合わせて回転情報を更新（録画中は固定）
-    val busyState = rememberUpdatedState(busyNow)
-    DisposableEffect(settings.landscape) {
-        val l = object : OrientationEventListener(context) {
-            override fun onOrientationChanged(o: Int) {
-                if (o == OrientationEventListener.ORIENTATION_UNKNOWN || busyState.value || !settings.landscape) return
-                engine.setRotation(if (o in 45..134) Surface.ROTATION_270 else Surface.ROTATION_90)
-            }
-        }
-        if (settings.landscape) l.enable() else engine.setRotation(Surface.ROTATION_0)
-        onDispose { l.disable() }
-    }
 
     // 曲を前もって読み込む
     LaunchedEffect(active) {
@@ -312,7 +335,7 @@ private fun CameraContent(
                     }
                 }
         )
-        if (settings.grid) GridOverlay(if (photoMode) 3f / 4f else if (settings.landscape) 16f / 9f else 9f / 16f)
+        if (settings.grid) GridOverlay(if (photoMode) (if (land) 4f / 3f else 3f / 4f) else if (land) 16f / 9f else 9f / 16f)
 
         if (counting > 0) {
             Text(
@@ -322,19 +345,28 @@ private fun CameraContent(
         }
         Box(Modifier.fillMaxSize().alpha(flash.value).background(Color.White))
 
+        val dim = if (busyNow) .25f else 1f
+        val recProgress = when {
+            recPhase == null -> 0f
+            clipProgress != null -> clipProgress
+            else -> ((elapsed % 60_000) / 60_000f)
+        }
+        val orientLabel = when (settings.orientationMode) { "portrait" -> "縦"; "landscape" -> "横"; else -> "自動" }
+
         // ---- 上部 ----
         Column(
             Modifier
                 .fillMaxWidth()
                 .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xC005070F), Color.Transparent)))
                 .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .displayCutoutPadding()
+                .padding(start = 12.dp, end = if (land) 124.dp else 12.dp, top = 6.dp, bottom = 6.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Chip("${caps.actualFps.takeIf { caps.ready && !photoMode } ?: settings.fps}p", accent = true) {
                     if (!busyNow) vm.updateSettings { s -> s.copy(fps = listOf(60, 30, 24)[(listOf(60, 30, 24).indexOf(s.fps) + 1) % 3]) }
                 }
-                Chip("${if (settings.quality == "4K") "4K" else settings.quality + "p"} · ${if (settings.landscape) "横" else "縦"}") { if (!busyNow) showQualitySheet = true }
+                Chip("${if (settings.quality == "4K") "4K" else settings.quality + "p"} · $orientLabel") { if (!busyNow) showQualitySheet = true }
                 Chip(if (settings.countdown > 0) "⏱ ${settings.countdown}s" else "⏱ オフ") {
                     if (!busyNow) vm.updateSettings { s -> s.copy(countdown = listOf(0, 3, 5, 10)[(listOf(0, 3, 5, 10).indexOf(s.countdown) + 1) % 4]) }
                 }
@@ -345,6 +377,7 @@ private fun CameraContent(
                         contentAlignment = Alignment.Center,
                     ) { Icon(if (pro.torch) Icons.Rounded.FlashOn else Icons.Rounded.FlashOff, "ライト", tint = if (pro.torch) VM.Ink else VM.Tx, modifier = Modifier.size(16.dp)) }
                 }
+                if (land) Box(Modifier.weight(1f, fill = false)) { ClipChip(active, photoMode) { if (!busyNow) showClipSheet = true } }
                 Spacer(Modifier.weight(1f))
                 val fps = caps.actualFps.coerceAtLeast(1)
                 val s = elapsed / 1000
@@ -353,28 +386,9 @@ private fun CameraContent(
                 Spacer(Modifier.width(5.dp))
                 Text("%02d:%02d:%02d".format(s / 60, s % 60, f), color = if (recPhase != null) Color.White else VM.Tx, fontSize = 16.sp, style = NumStyle)
             }
-            Spacer(Modifier.height(8.dp))
-            // 選択中の音楽
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(17.dp))
-                    .background(VM.S1.copy(alpha = .75f))
-                    .border(1.dp, VM.Line, RoundedCornerShape(17.dp))
-                    .clickable { if (!busyNow) showClipSheet = true }
-                    .padding(start = 6.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(22.dp).clip(CircleShape).background(VM.Moon), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.MusicNote, null, tint = VM.Ink, modifier = Modifier.size(14.dp))
-                }
-                Spacer(Modifier.width(8.dp))
-                val a = active
-                Text(
-                    if (a == null) (if (photoMode) "写真モード" else "音楽なしで撮影") else "${a.first.name} · ${a.second.name}",
-                    color = VM.Tx, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(if (a == null) "タップして選ぶ" else "${fmtTime(a.second.startMs)}–${fmtTime(a.second.endMs)}", color = VM.Mu, fontSize = 12.5.sp, style = NumStyle.copy(fontWeight = FontWeight.Normal))
+            if (!land) {
+                Spacer(Modifier.height(8.dp))
+                ClipChip(active, photoMode) { if (!busyNow) showClipSheet = true }
             }
             if (busyNow && active != null) {
                 Spacer(Modifier.height(8.dp))
@@ -389,9 +403,12 @@ private fun CameraContent(
             }
         }
 
-        // ---- 右側：ヒストグラムと実測fps ----
+        // ---- ヒストグラムと実測fps ----
         Column(
-            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = if (busyNow && active != null) 140.dp else 96.dp, end = 10.dp),
+            Modifier.align(Alignment.TopEnd).statusBarsPadding().displayCutoutPadding().padding(
+                top = when { land && busyNow && active != null -> 92.dp; land -> 52.dp; busyNow && active != null -> 140.dp; else -> 96.dp },
+                end = if (land) 128.dp else 10.dp,
+            ),
             horizontalAlignment = Alignment.End,
         ) {
             histo?.let { Histogram(it) }
@@ -402,52 +419,57 @@ private fun CameraContent(
             )
         }
 
-        // ---- 下部 ----
-        Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color(0xD005070F))))
-                .padding(top = 30.dp, bottom = 8.dp)
-        ) {
-            val dim = if (busyNow) .25f else 1f
-            sel?.let { p ->
-                ProPanel(p, pro, caps, live, caps.actualFps, settings.flickerHz) { pro = it }
-            }
-            Box(Modifier.alpha(dim)) { ProStrip(pro, caps, live, sel) { if (!busyNow) sel = if (sel == it) null else it } }
-            Row(
-                Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 6.dp).alpha(dim),
-                horizontalArrangement = Arrangement.Center,
+        if (!land) {
+            // ---- 縦：下部にまとめる ----
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color(0xD005070F))))
+                    .padding(top = 30.dp, bottom = 8.dp)
             ) {
-                listOf(true to "写真", false to "動画").forEach { (isPhoto, label) ->
-                    Text(
-                        label, color = if (photoMode == isPhoto) VM.Moon else VM.Mu,
-                        fontWeight = if (photoMode == isPhoto) FontWeight.Bold else FontWeight.Normal,
-                        modifier = Modifier.clickable(enabled = !busyNow) { photoMode = isPhoto }.padding(horizontal = 14.dp, vertical = 2.dp),
-                    )
+                sel?.let { p -> ProPanel(p, pro, caps, live, caps.actualFps, settings.flickerHz) { pro = it } }
+                Box(Modifier.alpha(dim)) { ProStrip(pro, caps, live, sel) { if (!busyNow) sel = if (sel == it) null else it } }
+                ModeSwitch(photoMode, vertical = false, enabled = !busyNow, modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 6.dp).alpha(dim)) { photoMode = it }
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 30.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    LastThumb(vm, takes.firstOrNull(), Modifier.alpha(dim)) { if (!busyNow) onOpenLibrary() }
+                    MoonRecordButton(photoMode = photoMode, recording = busyNow, progress = recProgress, onClick = ::onShutter)
+                    FlipButton(Modifier.alpha(dim)) { if (!busyNow) vm.updateSettings { it.copy(frontCamera = !it.frontCamera) } }
                 }
             }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 30.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+        } else {
+            // ---- 横：右に撮影ボタン、下にプロ設定 ----
+            Column(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .background(androidx.compose.ui.graphics.Brush.horizontalGradient(listOf(Color.Transparent, Color(0xD005070F))))
+                    .navigationBarsPadding()
+                    .displayCutoutPadding()
+                    .width(112.dp)
+                    .padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
             ) {
+                ModeSwitch(photoMode, vertical = true, enabled = !busyNow, modifier = Modifier.alpha(dim)) { photoMode = it }
+                FlipButton(Modifier.alpha(dim)) { if (!busyNow) vm.updateSettings { it.copy(frontCamera = !it.frontCamera) } }
+                MoonRecordButton(photoMode = photoMode, recording = busyNow, progress = recProgress, onClick = ::onShutter)
                 LastThumb(vm, takes.firstOrNull(), Modifier.alpha(dim)) { if (!busyNow) onOpenLibrary() }
-                MoonRecordButton(
-                    photoMode = photoMode,
-                    recording = busyNow,
-                    progress = when {
-                        recPhase == null -> 0f
-                        clipProgress != null -> clipProgress
-                        else -> ((elapsed % 60_000) / 60_000f)
-                    },
-                    onClick = ::onShutter,
-                )
-                Box(
-                    Modifier.size(46.dp).alpha(dim).clip(CircleShape).background(VM.S1.copy(alpha = .8f)).border(1.dp, VM.Line, CircleShape)
-                        .clickable(enabled = !busyNow) { vm.updateSettings { it.copy(frontCamera = !it.frontCamera) } },
-                    contentAlignment = Alignment.Center,
-                ) { Icon(Icons.Rounded.Cameraswitch, "カメラ切替", tint = VM.Tx) }
+            }
+            Column(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .displayCutoutPadding()
+                    .padding(end = 112.dp, bottom = 8.dp)
+            ) {
+                sel?.let { p -> Box(Modifier.widthIn(max = 560.dp)) { ProPanel(p, pro, caps, live, caps.actualFps, settings.flickerHz) { pro = it } } }
+                Box(Modifier.alpha(dim)) { ProStrip(pro, caps, live, sel) { if (!busyNow) sel = if (sel == it) null else it } }
             }
         }
 
@@ -469,7 +491,7 @@ private fun CameraContent(
         Sheet(showQualitySheet, { showQualitySheet = false }) {
             Text("解像度と向き", color = VM.Tx, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             SettingRow("解像度") { Seg(listOf("720" to "720p", "1080" to "1080p", "4K" to "4K"), settings.quality, { q -> vm.updateSettings { it.copy(quality = q) } }) }
-            SettingRow("向き", "横にすると端末の向きに合わせて横長で録画します") { Seg(listOf(false to "縦", true to "横"), settings.landscape, { v -> vm.updateSettings { it.copy(landscape = v) } }) }
+            SettingRow("向き", "自動：横に持てば横長、縦に持てば縦長で撮影") { Seg(listOf("auto" to "自動", "portrait" to "縦", "landscape" to "横"), settings.orientationMode, { v -> vm.updateSettings { it.copy(orientationMode = v) } }) }
             Text("4Kや60fpsは端末によって対応していないことがあります。そのときは近い設定で撮影し、画面上部でお知らせします。", color = VM.Mu, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
         }
         review?.let { t ->
@@ -479,6 +501,56 @@ private fun CameraContent(
             }, onKeep = { review = null }, onExport = { vm.export(listOf(t)); review = null })
         }
     }
+}
+
+@Composable
+private fun ClipChip(active: Pair<com.videomoon.app.data.Track, com.videomoon.app.data.Clip>?, photoMode: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(17.dp))
+            .background(VM.S1.copy(alpha = .75f))
+            .border(1.dp, VM.Line, RoundedCornerShape(17.dp))
+            .clickable(onClick = onClick)
+            .padding(start = 6.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(22.dp).clip(CircleShape).background(VM.Moon), contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.MusicNote, null, tint = VM.Ink, modifier = Modifier.size(14.dp))
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            if (active == null) (if (photoMode) "写真モード" else "音楽なしで撮影") else "${active.first.name} · ${active.second.name}",
+            color = VM.Tx, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            if (active == null) "タップして選ぶ" else "${fmtTime(active.second.startMs)}–${fmtTime(active.second.endMs)}",
+            color = VM.Mu, fontSize = 12.5.sp, maxLines = 1, style = NumStyle.copy(fontWeight = FontWeight.Normal),
+        )
+    }
+}
+
+@Composable
+private fun ModeSwitch(photoMode: Boolean, vertical: Boolean, enabled: Boolean, modifier: Modifier = Modifier, onChange: (Boolean) -> Unit) {
+    val items: @Composable () -> Unit = {
+        listOf(true to "写真", false to "動画").forEach { (isPhoto, label) ->
+            Text(
+                label, color = if (photoMode == isPhoto) VM.Moon else VM.Mu,
+                fontWeight = if (photoMode == isPhoto) FontWeight.Bold else FontWeight.Normal,
+                modifier = Modifier.clickable(enabled = enabled) { onChange(isPhoto) }.padding(horizontal = 14.dp, vertical = 2.dp),
+            )
+        }
+    }
+    if (vertical) Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) { items() }
+    else Row(modifier, horizontalArrangement = Arrangement.Center) { items() }
+}
+
+@Composable
+private fun FlipButton(modifier: Modifier, onClick: () -> Unit) {
+    Box(
+        modifier.size(46.dp).clip(CircleShape).background(VM.S1.copy(alpha = .8f)).border(1.dp, VM.Line, CircleShape).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Icon(Icons.Rounded.Cameraswitch, "カメラ切替", tint = VM.Tx) }
 }
 
 @Composable

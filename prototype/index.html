@@ -46,7 +46,7 @@ svg{display:block}
 #notes p,#notes li{color:#c9c8d6;font-size:13.5px}
 #notes ul{padding-left:18px;margin:6px 0}
 #notes .badge{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:9px;background:var(--s2);color:var(--mu);margin-right:4px}
-@media (max-width:860px){
+@media (max-width:860px),(max-height:500px){
   #notes{display:none}
   #stage{padding:0;display:block;background:var(--night)}
   #phone{width:100vw;height:100dvh;min-height:0;border:0;border-radius:0;box-shadow:none}
@@ -284,6 +284,43 @@ svg{display:block}
 #busy.on{display:flex}
 .spin{width:30px;height:30px;border-radius:50%;border:3px solid var(--s3);border-top-color:var(--moon);animation:sp 1s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
+/* ---------- 横向き ---------- */
+#phone.landscape{width:min(844px,calc(100vw - 440px));height:390px;min-height:0}
+#phone.landscape #statusbar{display:none}
+#phone.landscape #app{--sat:10px}
+#app.ls{--rail:68px;--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px)}
+.ls #tabbar{top:0;bottom:0;right:auto;width:calc(var(--rail) + var(--sl));height:auto;padding:6px 0 6px var(--sl);flex-direction:column;border-top:0;border-right:1px solid rgba(44,53,94,.7)}
+.ls #tabbar.hide{transform:translateX(-110%)}
+.ls .tab{max-height:80px}
+.ls .page{left:calc(var(--rail) + var(--sl));bottom:0;padding-top:12px;padding-right:calc(18px + var(--sr))}
+.ls .page>*{max-width:760px;margin-left:auto;margin-right:auto}
+.ls #libGrid{grid-template-columns:repeat(4,1fr)}
+.ls #scr-trim .page{left:0;padding-left:calc(18px + var(--sl))}
+.ls .page h2.title{font-size:22px;margin:0 0 10px}
+.ls .cam-top{left:calc(var(--rail) + var(--sl));right:calc(112px + var(--sr));padding:8px 10px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.ls .cam-top .row{display:contents}
+.ls .cam-top .chip{order:1}
+.ls #clipChip{order:2;margin-top:0;min-width:0;flex:0 1 auto}
+.ls .cam-top .spacer{order:3}
+.ls #recTC{order:4}
+.ls #recBar{order:5;flex:1 1 100%;margin-top:2px}
+.ls #sideInfo{right:calc(120px + var(--sr));top:58px}
+.ls #demoTag{left:calc(var(--rail) + 10px + var(--sl));top:auto;bottom:66px}
+.ls #warnTag{left:calc(var(--rail) + 10px + var(--sl));top:58px}
+.ls .cam-bottom,.recording.ls .cam-bottom{inset:0;padding:0;background:none;pointer-events:none}
+.ls .cam-bottom>*{pointer-events:auto}
+.ls .cam-pro{position:absolute;left:calc(var(--rail) + 8px + var(--sl));right:calc(118px + var(--sr));bottom:8px}
+.recording.ls .cam-pro{left:calc(8px + var(--sl))}
+.ls #proStrip{margin:0}
+.ls #proPanel{margin:0 0 6px;max-width:540px}
+.ls .cam-shoot{position:absolute;top:0;bottom:0;right:0;width:calc(112px + var(--sr));padding-right:var(--sr);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:linear-gradient(90deg,rgba(5,7,15,0),rgba(5,7,15,.82) 30%)}
+.ls .modes{flex-direction:column;align-items:center;gap:4px;margin:0}
+.ls .shutter-row{flex-direction:column;gap:16px;padding:0}
+.ls #flipBtn{order:-1}
+.ls #countdown{font-size:120px}
+.ls #sheet{left:0;right:0;margin:0 auto;width:min(560px,100%);max-height:94%}
+.ls .review-vid{max-height:46vh}
+.ls #toast{top:12px}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
@@ -321,6 +358,7 @@ svg{display:block}
         <span id="fpsMeter">実測 <b>--</b> fps</span>
       </div>
       <div class="cam-bottom">
+        <div class="cam-pro">
         <div id="proPanel">
           <div class="pp-head"><span class="name" id="ppName">ISO</span><span class="val" id="ppVal">1600</span><button class="pp-auto" id="ppAuto">オート</button></div>
           <input type="range" id="ppRange" min="0" max="10" step="1">
@@ -334,11 +372,14 @@ svg{display:block}
           <button class="pc" data-p="ev"><span class="l">露出補正</span><span class="v" id="vEv">±0</span></button>
           <button class="pc" data-p="focus"><span class="l">フォーカス</span><span class="v" id="vFocus">AF</span></button>
         </div>
+        </div>
+        <div class="cam-shoot">
         <div class="modes"><button data-mode="photo">写真</button><button data-mode="video" class="on">動画</button></div>
         <div class="shutter-row">
           <button id="lastThumb" aria-label="ライブラリを開く"></button>
           <button id="recBtn" aria-label="録画"><svg viewBox="0 0 100 100"><circle class="disc" cx="50" cy="50" r="50"/><path class="shade" id="moonShade" d=""/></svg></button>
           <button id="flipBtn" aria-label="カメラ切替"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 9a8 8 0 0 1 14.5-3M20 15a8 8 0 0 1-14.5 3"/><path d="M19 2v4h-4M5 22v-4h4"/></svg></button>
+        </div>
         </div>
       </div>
     </section>
@@ -397,6 +438,7 @@ svg{display:block}
       <div class="page">
         <h2 class="title">ライブラリ<button class="chip" id="selBtn">選択</button></h2>
         <div class="libTools"><div class="seg" id="segLib"><button data-v="all" class="on jp">すべて</button><button data-v="video" class="jp">動画</button><button data-v="photo" class="jp">写真</button></div><span class="spacer"></span><span class="muted small" id="libCount"></span></div>
+        <div id="storageInfo" class="hint" style="margin:0 0 12px"></div>
         <div id="libGrid"></div>
         <div id="libEmpty" class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>撮影したテイクはここに並びます。<br>アプリ内に好きなだけ保存しておけます。</div>
         <div id="selBar" style="display:none;margin-top:14px;gap:8px"><button class="btn sec" style="flex:1" id="selExport">まとめて書き出す</button><button class="btn sec" id="selDelete" style="color:var(--rec)">削除</button></div>
@@ -437,6 +479,7 @@ svg{display:block}
 <aside id="notes">
   <h1><svg width="30" height="30" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="#e9ddb4"/><circle cx="68" cy="40" r="40" fill="#0b1022"/></svg>videomoon</h1>
   <p class="sub">音楽を流しながら撮る、なめらかな動画カメラ。Android版の画面と動きをブラウザで再現したプロトタイプです。</p>
+  <button class="chip" id="rotBtn" style="margin:-8px 0 8px">横向きで表示する</button>
   <div id="noteBody"></div>
 </aside>
 </div>
@@ -467,12 +510,18 @@ const DB={db:null,
 const LS={get(k,d){try{const v=localStorage.getItem('vm_'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('vm_'+k,JSON.stringify(v))}catch(e){}}};
 
 /* ================= state ================= */
-const ST=Object.assign({fps:60,res:'1080',aspect:'9:16',stab:true,flicker:50,countdown:3,grid:true,zebra:false,zebraLv:95,peaking:false,histo:true,
+const ST=Object.assign({fps:60,res:'1080',aspect:'auto',stab:true,flicker:50,countdown:3,grid:true,zebra:false,zebraLv:95,peaking:false,histo:true,
   mirrorPreview:true,mirrorSave:false,monitorVol:0.9,syncMs:0,autoReview:true,continuous:false,codec:'H.264',scene:'stage',facing:'back'},LS.get('settings',{}));
 const PRO={ae:true,iso:1600,shut:120,awb:true,wb:5600,ev:0,af:true,focus:0.7};
 const S={tab:'camera',mode:'video',tracks:[],takes:[],activeClip:LS.get('activeClip',null),buffers:new Map(),peaks:new Map(),
   rec:null,counting:false,libFilter:'all',selecting:false,picked:new Set()};
+if(ST.v!==2){ST.v=2;ST.aspect='auto'}
 function saveST(){LS.set('settings',ST)}
+const phoneEl=$('#phone'),mqLand=matchMedia('(orientation: landscape) and (max-height: 600px)');
+function isLand(){return phoneEl.classList.contains('landscape')||mqLand.matches}
+/** 録画に使う画面比。自動なら端末の向きに合わせる。録画中は固定 */
+function ASP(){if(S.rec&&S.rec.aspect)return S.rec.aspect;return ST.aspect==='auto'?(isLand()?'16:9':'9:16'):ST.aspect}
+function aspLabel(){return ST.aspect==='auto'?'自動':ASP()==='16:9'?'横':'縦'}
 
 /* ================= audio ================= */
 let AC=null;
@@ -736,7 +785,7 @@ function renderScene(t){const W=demoCv.width,H=demoCv.height,c=dc,sc=ST.scene,la
 
 /* ================= video source ================= */
 const VS={mode:'demo',stream:null,camStream:null,last:0,frames:[],raf:0,running:false,track:null,caps:null};
-function setCanvasSize(){const land=ST.aspect==='16:9';const w=land?1280:720,h=land?720:1280;if(demoCv.width!==w){demoCv.width=w;demoCv.height=h}VS.stream=null}
+function setCanvasSize(){const land=ASP()==='16:9';const w=land?1280:720,h=land?720:1280;if(demoCv.width!==w){demoCv.width=w;demoCv.height=h}VS.stream=null}
 function getDemoStream(){if(!VS.stream||VS.streamFps!==ST.fps){try{VS.stream=demoCv.captureStream(ST.fps);VS.streamFps=ST.fps}catch(e){VS.stream=null}}return VS.stream}
 function loop(ts){VS.raf=requestAnimationFrame(loop);const minDt=1000/ST.fps-2;if(ts-VS.last<minDt)return;VS.last=ts;
   VS.frames.push(ts);while(VS.frames.length&&ts-VS.frames[0]>1000)VS.frames.shift();
@@ -746,7 +795,7 @@ function startLoop(){if(VS.running)return;VS.running=true;VS.raf=requestAnimatio
 function stopLoop(){VS.running=false;cancelAnimationFrame(VS.raf);stopAnalysis()}
 async function tryRealCamera(){if(EMBED||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return false;
   try{if(VS.camStream)VS.camStream.getTracks().forEach(t=>t.stop());
-    const land=ST.aspect==='16:9';const s=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:ST.facing==='front'?'user':'environment',frameRate:{ideal:ST.fps,max:ST.fps},width:{ideal:land?1920:1080},height:{ideal:land?1080:1920}}});
+    const land=ASP()==='16:9';const s=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:ST.facing==='front'?'user':'environment',frameRate:{ideal:ST.fps,max:ST.fps},width:{ideal:land?1920:1080},height:{ideal:land?1080:1920}}});
     VS.camStream=s;VS.track=s.getVideoTracks()[0];VS.caps=VS.track.getCapabilities?VS.track.getCapabilities():{};const v=$('#camVideo');v.srcObject=s;v.style.display='block';demoCv.style.display='none';VS.mode='real';$('#demoTag').style.display='none';applyRealConstraints();return true}
   catch(e){return false}}
 function applyRealConstraints(){if(VS.mode!=='real')return;const c=VS.caps||{},adv={};const e=effExposure();
@@ -764,7 +813,7 @@ const an=document.createElement('canvas');an.width=90;an.height=160;const anc=an
 const ov=$('#overlayCv'),ovc=ov.getContext('2d');let anTimer=0;
 function startAnalysis(){if(!anTimer)anTimer=setInterval(analyze,140)}
 function stopAnalysis(){clearInterval(anTimer);anTimer=0}
-function analyze(){const src=sourceEl();const land=ST.aspect==='16:9';const w=land?240:135,h=land?135:240;if(an.width!==w){an.width=w;an.height=h;ov.width=w*2;ov.height=h*2}
+function analyze(){const src=sourceEl();const land=ASP()==='16:9';const w=land?240:135,h=land?135:240;if(an.width!==w){an.width=w;an.height=h;ov.width=w*2;ov.height=h*2}
   try{anc.drawImage(src,0,0,w,h)}catch(e){return}const d=anc.getImageData(0,0,w,h).data;const hist=new Uint32Array(64);const Y=new Float32Array(w*h);
   for(let i=0,p=0;i<d.length;i+=4,p++){const y=.2126*d[i]+.7152*d[i+1]+.0722*d[i+2];Y[p]=y;hist[Math.min(63,y/4|0)]++}
   if(ST.histo){const hc=$('#histoCv').getContext('2d'),W=208,H=100;hc.clearRect(0,0,W,H);let mx=0;for(const v of hist)mx=Math.max(mx,v);
@@ -778,11 +827,11 @@ function analyze(){const src=sourceEl();const land=ST.aspect==='16:9';const w=la
   ovc.putImageData(img,0,0)}
 
 /* ================= camera UI ================= */
-function layoutGuides(){const vf=$('#viewfinder').getBoundingClientRect();const land=ST.aspect==='16:9',ar=land?16/9:9/16;let w=vf.width,h=w/ar;if(h>vf.height){h=vf.height;w=h*ar}
+function layoutGuides(){const vf=$('#viewfinder').getBoundingClientRect();const land=ASP()==='16:9',ar=land?16/9:9/16;let w=vf.width,h=w/ar;if(h>vf.height){h=vf.height;w=h*ar}
   const g=$('#gridLines');g.style.left=(vf.width-w)/2+'px';g.style.top=(vf.height-h)/2+'px';g.style.width=w+'px';g.style.height=h+'px';
   const L=$$('#gridLines i');[[33.33,0,1,100],[66.66,0,1,100],[0,33.33,100,1],[0,66.66,100,1]].forEach((v,i)=>{const s=L[i].style;if(v[2]===1){s.left=v[0]+'%';s.top=0;s.width='1px';s.height='100%'}else{s.top=v[1]+'%';s.left=0;s.height='1px';s.width='100%'}})}
 function renderCamUI(){app.classList.toggle('photo-mode',S.mode==='photo');app.classList.toggle('mode-video',S.mode==='video');
-  $('#chipFps').textContent=ST.fps+'p';$('#chipRes').textContent=(ST.res==='4K'?'4K':ST.res)+' · '+ST.aspect;$('#chipTimer').querySelector('span').textContent=ST.countdown?ST.countdown+'s':'オフ';
+  $('#chipFps').textContent=ST.fps+'p';$('#chipRes').textContent=(ST.res==='4K'?'4K':ST.res)+' · '+aspLabel();$('#chipTimer').querySelector('span').textContent=ST.countdown?ST.countdown+'s':'オフ';
   $('#gridLines').classList.toggle('on',ST.grid);$('#histoBox').style.display=ST.histo?'block':'none';
   $('#demoTag span').textContent='デモ映像：'+SCENES[ST.scene].label;
   $('#demoCv').style.transform=$('#camVideo').style.transform=(ST.facing==='front'&&ST.mirrorPreview)?'scaleX(-1)':'';
@@ -837,7 +886,7 @@ $('#viewfinder').addEventListener('click',()=>{if(ppSel){ppSel=null;renderPro()}
 $$('.modes button').forEach(b=>b.onclick=()=>{S.mode=b.dataset.mode;renderCamUI()});
 $('#chipFps').onclick=()=>{if(S.rec)return;const o=[60,30,24];ST.fps=o[(o.indexOf(ST.fps)+1)%3];if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter();saveST();VS.stream=null;if(VS.mode==='real')tryRealCamera();renderCamUI();toast(ST.fps+'fps で撮影します')};
 $('#chipRes').onclick=()=>{if(S.rec)return;openSheet(`<h3>解像度と画面の向き</h3><div class="field"><div class="fl">解像度</div><div class="seg" id="shRes"><button data-v="720">720p</button><button data-v="1080">1080p</button><button data-v="4K">4K</button></div></div>
-  <div class="field"><div class="fl">画面比</div><div class="seg" id="shAsp"><button data-v="9:16" class="jp">縦 9:16</button><button data-v="16:9" class="jp">横 16:9</button></div></div><p class="muted small">4Kは端末によっては60fpsに対応していません。その場合は撮影前にお知らせします。</p>`);
+  <div class="field"><div class="fl">画面比</div><div class="seg" id="shAsp"><button data-v="auto" class="jp">自動</button><button data-v="9:16" class="jp">縦 9:16</button><button data-v="16:9" class="jp">横 16:9</button></div></div><p class="muted small">「自動」は端末を横に持つと横長、縦に持つと縦長で撮影します（録画中は固定）。4Kは端末によっては60fpsに対応していません。</p>`);
   const up=()=>{$$('#shRes button').forEach(b=>b.classList.toggle('on',b.dataset.v===ST.res));$$('#shAsp button').forEach(b=>b.classList.toggle('on',b.dataset.v===ST.aspect))};up();
   $$('#shRes button').forEach(b=>b.onclick=()=>{ST.res=b.dataset.v;saveST();up();renderCamUI()});
   $$('#shAsp button').forEach(b=>b.onclick=()=>{ST.aspect=b.dataset.v;saveST();setCanvasSize();up();renderCamUI();if(VS.mode==='real')tryRealCamera()})};
@@ -865,7 +914,7 @@ async function startRec(){if(typeof MediaRecorder==='undefined'){toast('この�
   const vt=videoTrackForRecording();if(!vt){toast('映像を取得できませんでした');app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}
   const ctx=ac();const tracks=[vt];let dest=null;if(a){dest=ctx.createMediaStreamDestination();tracks.push(dest.stream.getAudioTracks()[0])}
   const mime=pickMime();let mr;try{mr=new MediaRecorder(new MediaStream(tracks),mime?{mimeType:mime,videoBitsPerSecond:ST.fps>=60?12e6:8e6}:{})}catch(e){toast('録画を開始できませんでした');app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}
-  const r={mr,chunks:[],mime:mr.mimeType||mime,clip:a,t0:0,dur:0,thumb:null,started:false,isSample:a&&a.tr.isSample,fps:ST.fps,aspect:ST.aspect};S.rec=r;
+  const r={mr,chunks:[],mime:mr.mimeType||mime,clip:a,t0:0,dur:0,thumb:null,started:false,isSample:a&&a.tr.isSample,fps:ST.fps,aspect:ASP()};S.rec=r;
   mr.ondataavailable=e=>{if(e.data&&e.data.size)r.chunks.push(e.data)};
   mr.onstop=()=>finishRec(r);
   if(a){const c=a.c,buf=S.buffers.get(a.tr.id),pre=Math.min(c.preroll||0,c.start),len=c.end-c.start,t0=ctx.currentTime+.15,sync=(ST.syncMs||0)/1000;
@@ -887,16 +936,16 @@ async function startRec(){if(typeof MediaRecorder==='undefined'){toast('この�
 function stopRec(why){const r=S.rec;if(!r)return;clearTimeout(r.endTimer);r.dur=r.started?(performance.now()-r.t0)/1000:0;r.why=why;
   if(r.music){try{r.music.mon.stop()}catch(e){}try{r.music.rs.stop()}catch(e){}}
   if(r.started&&r.mr.state!=='inactive')r.mr.stop();else finishRec(r)}
-async function finishRec(r){S.rec=null;app.classList.remove('recording');$('#tabbar').classList.remove('hide');drawMoon(0);$('#tcText').textContent='00:00:00';
+async function finishRec(r){S.rec=null;setCanvasSize();layoutGuides();app.classList.remove('recording');$('#tabbar').classList.remove('hide');drawMoon(0);$('#tcText').textContent='00:00:00';
   if(!r.started||!r.chunks.length||r.dur<.3){toast('録画が短すぎるため保存しませんでした');return}
   const blob=new Blob(r.chunks,{type:(r.mime||'video/webm').split(';')[0]});
   const a=r.clip;const n=S.takes.filter(t=>t.kind==='video'&&a&&t.clipId===a.c.id).length+1;
   const take={id:uid(),kind:'video',blob,mime:blob.type,thumb:r.thumb||grabThumb(),created:Date.now(),dur:r.dur,fps:r.fps,res:ST.res,aspect:r.aspect,
     title:a?`${a.c.name} ・ テイク ${n}`:'動画',trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:VS.mode==='demo'?ST.scene:null};
-  S.takes.unshift(take);await DB.put('takes',take);updateLastThumb();
+  S.takes.unshift(take);await DB.put('takes',take);updateLastThumb();askPersist();
   if(ST.continuous&&!S.contStop){toast(`テイク ${n} を保存。続けて撮影します`);await sleep(1200);if(S.tab==='camera'&&!S.rec&&!S.contStop)startRec();return}
   if(ST.autoReview)showReview(take);else toast('ライブラリに保存しました')}
-function grabThumb(){const src=sourceEl(),land=ST.aspect==='16:9',c=document.createElement('canvas');c.width=land?320:180;c.height=land?180:320;
+function grabThumb(){const src=sourceEl(),land=ASP()==='16:9',c=document.createElement('canvas');c.width=land?320:180;c.height=land?180:320;
   try{c.getContext('2d').drawImage(src,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.7)}catch(e){return ''}}
 function drawRecWave(a){const cv=$('#recWave');requestAnimationFrame(()=>{const p=S.peaks.get(a.tr.id),d=a.tr.duration;drawMiniWave(cv,p,(a.c.start-(a.c.preroll||0))/d,a.c.end/d,'#4a5490')})}
 function updateRecUI(){const r=S.rec;if(!r){return}let el=0;
@@ -907,11 +956,11 @@ function updateRecUI(){const r=S.rec;if(!r){return}let el=0;
   $('#tcText').textContent=`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}:${String(f).padStart(2,'0')}`}
 setInterval(()=>{const n=VS.frames.length;$('#fpsMeter').innerHTML=`実測 <b>${n?n:'--'}</b> / ${ST.fps} fps`},500);
 
-async function takePhoto(){const src=sourceEl(),c=document.createElement('canvas');const land=ST.aspect==='16:9';
+async function takePhoto(){const src=sourceEl(),c=document.createElement('canvas');const land=ASP()==='16:9';
   if(VS.mode==='real'){c.width=src.videoWidth;c.height=src.videoHeight}else{c.width=demoCv.width;c.height=demoCv.height}
   c.getContext('2d').drawImage(src,0,0,c.width,c.height);$('#flash').classList.remove('go');void $('#flash').offsetWidth;$('#flash').classList.add('go');beep(1600);
   const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.92));const th=grabThumb();
-  const take={id:uid(),kind:'photo',blob,mime:'image/jpeg',thumb:th,created:Date.now(),aspect:ST.aspect,title:'写真',res:c.width+'×'+c.height};
+  const take={id:uid(),kind:'photo',blob,mime:'image/jpeg',thumb:th,created:Date.now(),aspect:ASP(),title:'写真',res:c.width+'×'+c.height};
   S.takes.unshift(take);await DB.put('takes',take);updateLastThumb();toast('写真を保存しました')}
 function updateLastThumb(){const t=S.takes[0];$('#lastThumb').style.backgroundImage=t&&t.thumb?`url(${t.thumb})`:''}
 
@@ -928,7 +977,17 @@ function fixDuration(v){v.addEventListener('loadedmetadata',function f(){if(v.du
 
 /* ================= library ================= */
 async function loadTakes(){const rows=await DB.all('takes');S.takes=(rows||[]).sort((a,b)=>b.created-a.created);updateLastThumb()}
-function renderLibrary(){const g=$('#libGrid');g.innerHTML='';const list=S.takes.filter(t=>S.libFilter==='all'||t.kind===S.libFilter);
+const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const STANDALONE=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+function fmtBytes(n){if(n<1024*1024)return Math.max(1,Math.round(n/1024))+' KB';if(n<1024**3)return (n/1024/1024).toFixed(1)+' MB';return (n/1024**3).toFixed(2)+' GB'}
+async function renderStorage(){const el=$('#storageInfo');const sum=S.takes.reduce((a,t)=>a+((t.blob&&t.blob.size)||0),0);
+  let h=`この端末に保存中：テイク ${S.takes.length}件・${fmtBytes(sum)}`;
+  try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();if(e.quota&&e.usage!=null)h+=`（このアプリが使える残り 約${fmtBytes(Math.max(0,e.quota-e.usage))}）`}}catch(e){}
+  h+='<br>書き出したテイクは、右上の「選択」からまとめて削除すると容量が空きます。';
+  if(IOS&&!STANDALONE&&!EMBED)h+='<br><b style="color:var(--warn)">Safariの共有ボタンから「ホーム画面に追加」して使ってください。</b>Safariで開いたまま使うと、このページを開かない日が7日続いたときに保存したテイクが消えることがあります。';
+  el.innerHTML=h}
+function askPersist(){try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}}
+function renderLibrary(){renderStorage();const g=$('#libGrid');g.innerHTML='';const list=S.takes.filter(t=>S.libFilter==='all'||t.kind===S.libFilter);
   $('#libEmpty').style.display=list.length?'none':'block';$('#libCount').textContent=list.length?list.length+' 件':'';
   $('#scr-library').classList.toggle('selecting',S.selecting);$('#selBtn').textContent=S.selecting?'完了':'選択';$('#selBar').style.display=S.selecting?'flex':'none';
   for(const t of list){const b=document.createElement('button');b.className='take'+(t.aspect==='16:9'?' land':'')+(S.picked.has(t.id)?' picked':'');b.style.backgroundImage=t.thumb?`url(${t.thumb})`:'';
@@ -943,7 +1002,7 @@ async function deleteTake(id){S.takes=S.takes.filter(t=>t.id!==id);await DB.del(
 const PL={urls:[]};
 function openPlayer(t){closePlayerMedia();const m=$('#plMedia');m.className='pl-media';$('#plCtrl').classList.remove('on');
   $('#plTitle').textContent=t.title;const d=new Date(t.created);
-  $('#plMeta').textContent=t.kind==='video'?`${t.dur.toFixed(1)}秒 ・ ${t.fps}fps ・ ${t.res}p ・ ${t.trackName||'音声なし'}`:`写真 ・ ${t.res} ・ ${d.toLocaleString('ja-JP')}`;
+  $('#plMeta').textContent=(t.kind==='video'?`${t.dur.toFixed(1)}秒 ・ ${t.fps}fps ・ ${t.res}p ・ ${t.trackName||'音声なし'}`:`写真 ・ ${t.res} ・ ${d.toLocaleString('ja-JP')}`)+` ・ ${fmtBytes(t.blob.size)}`;
   const url=URL.createObjectURL(t.blob);PL.urls.push(url);
   if(t.kind==='video'){const v=document.createElement('video');v.src=url;v.controls=true;v.playsInline=true;v.loop=true;m.appendChild(v);fixDuration(v);v.play().catch(()=>{})}
   else{const i=document.createElement('img');i.src=url;m.appendChild(i)}
@@ -995,7 +1054,7 @@ function renderSettings(){const B=$('#settingsBody');
   <h3 class="muted small" style="margin:6px 0 0;font-weight:500">撮影</h3>
   ${row('フレームレート','60fpsでなめらかに。24は映画風',seg('fps',[[24,'24'],[30,'30'],[60,'60']]))}
   ${row('解像度','',seg('res',[['720','720p'],['1080','1080p'],['4K','4K']]))}
-  ${row('画面比','',seg('aspect',[['9:16','縦'],['16:9','横']],true))}
+  ${row('画面比','自動：横に持てば横長、縦に持てば縦長で撮影',seg('aspect',[['auto','自動'],['9:16','縦'],['16:9','横']],true))}
   ${row('手ブレ補正','オンにすると画角が少し狭くなります',tog('stab'))}
   ${row('フリッカー低減','照明のちらつきを抑えるシャッターを自動で選びます。東日本50Hz／西日本60Hz',seg('flicker',[[50,'50Hz'],[60,'60Hz']]))}
   <h3 class="muted small" style="margin:22px 0 0;font-weight:500">撮影補助</h3>
@@ -1021,7 +1080,7 @@ function renderSettings(){const B=$('#settingsBody');
   <p class="muted small" style="text-align:center;margin-top:16px">videomoon prototype 0.1</p>`;
   $$('#settingsBody .seg').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=s.dataset.k;let v=b.dataset.v;
     if(s.dataset.bool)v=v==='true';else if(!isNaN(parseFloat(v))&&k!=='res'&&k!=='codec'&&k!=='aspect')v=parseFloat(v);ST[k]=v;saveST();
-    if(k==='aspect')setCanvasSize();if(k==='fps'){VS.stream=null;if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter()}renderSettings();renderCamUI()}));
+    if(k==='aspect'){setCanvasSize();if(VS.mode==='real')tryRealCamera()}if(k==='fps'){VS.stream=null;if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter()}renderSettings();renderCamUI()}));
   $$('#settingsBody input[data-r]').forEach(r=>r.oninput=()=>{ST[r.dataset.r]=parseFloat(r.value);saveST();if(r.dataset.r==='syncMs')$('#syncV').textContent=(ST.syncMs>0?'+':'')+ST.syncMs+' ms'});
   $('#showNotes').onclick=()=>openSheet('<h3>Android版の仕様</h3>'+NOTES_ALL);
   $('#wipe').onclick=()=>{openSheet('<h3>すべて削除しますか？</h3><p>音源・クリップ・撮影したテイクがこのブラウザから消えます。元に戻せません。</p><div class="rv-btns"><button class="btn sec" style="flex:1" id="wN">やめる</button><button class="btn pri" style="background:var(--rec);color:#fff" id="wY">削除する</button></div>');
@@ -1053,9 +1112,18 @@ function showScreen(tab){if(S.rec)return;if(S.tab==='trim'&&tab!=='trim')stopTri
 $$('.tab').forEach(t=>t.onclick=()=>showScreen(t.dataset.tab));
 window.addEventListener('resize',()=>{layoutGuides();if(S.tab==='trim')drawWave()});
 
+/* ================= orientation ================= */
+let lastLand=null;
+function applyOrientation(){const l=isLand();app.classList.toggle('ls',l);$('#rotBtn').textContent=phoneEl.classList.contains('landscape')?'縦向きで表示する':'横向きで表示する';
+  if(l===lastLand)return;lastLand=l;
+  if(!S.rec&&!S.counting){setCanvasSize();if(VS.mode==='real'&&ST.aspect==='auto')tryRealCamera()}
+  requestAnimationFrame(()=>{layoutGuides();if(S.tab==='trim')drawWave();if(S.tab==='camera')renderCamUI()})}
+mqLand.addEventListener('change',applyOrientation);window.addEventListener('resize',applyOrientation);
+$('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation();setTimeout(()=>{layoutGuides();if(S.tab==='trim')drawWave()},50)};
+
 /* ================= boot ================= */
 (async()=>{setInterval(()=>{const d=new Date();$('#sbTime').textContent=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')},10000);
-  setCanvasSize();await DB.open();await loadTracks();await loadTakes();renderCamUI();showScreen('camera');
+  applyOrientation();setCanvasSize();await DB.open();await loadTracks();await loadTakes();renderCamUI();showScreen('camera');
   const real=await tryRealCamera();if(real)toast('カメラを使って撮影できます');
   if(!LS.get('welcomed',false)){openSheet(`<h3>videomoon へようこそ</h3><p>好きな曲の好きな部分を流しながら、なめらかな60fpsで撮影できる動画カメラです。動画に入るのは流した音楽だけ。周りの雑音は入りません。</p>
    ${real?'':'<p class="muted small">このプレビューではカメラが使えないため、CGのデモ映像で撮影を体験できます。音楽は実際に流れて、撮った動画にも入ります。</p>'}

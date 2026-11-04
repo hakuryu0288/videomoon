@@ -103,7 +103,8 @@ data class Take(
 data class AppSettings(
     val fps: Int = 60,
     val quality: String = "1080",      // "720" | "1080" | "4K"
-    val landscape: Boolean = false,
+    /** "auto"=端末の向きに合わせる / "portrait"=縦で固定 / "landscape"=横で固定 */
+    val orientationMode: String = "auto",
     val stabilization: Boolean = true,
     val flickerHz: Int = 50,           // 東日本50 / 西日本60
     val countdown: Int = 3,
@@ -122,7 +123,7 @@ data class AppSettings(
     val frontCamera: Boolean = false,
 ) {
     fun toJson() = JSONObject()
-        .put("fps", fps).put("quality", quality).put("landscape", landscape).put("stab", stabilization)
+        .put("fps", fps).put("quality", quality).put("orientation", orientationMode).put("stab", stabilization)
         .put("flicker", flickerHz).put("countdown", countdown).put("grid", grid).put("histo", histogram)
         .put("zebra", zebra).put("zebraLv", zebraLevel).put("peaking", peaking)
         .put("mirrorPreview", mirrorPreview).put("mirrorSave", mirrorSave)
@@ -134,7 +135,7 @@ data class AppSettings(
             val d = AppSettings()
             return AppSettings(
                 fps = o.optInt("fps", d.fps), quality = o.optString("quality", d.quality),
-                landscape = o.optBoolean("landscape", d.landscape), stabilization = o.optBoolean("stab", d.stabilization),
+                orientationMode = o.optString("orientation", d.orientationMode), stabilization = o.optBoolean("stab", d.stabilization),
                 flickerHz = o.optInt("flicker", d.flickerHz), countdown = o.optInt("countdown", d.countdown),
                 grid = o.optBoolean("grid", d.grid), histogram = o.optBoolean("histo", d.histogram),
                 zebra = o.optBoolean("zebra", d.zebra), zebraLevel = o.optInt("zebraLv", d.zebraLevel),

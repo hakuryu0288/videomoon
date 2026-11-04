@@ -57,14 +57,24 @@ fun LibraryScreen(vm: MainViewModel, onOpen: (String) -> Unit) {
     var selecting by remember { mutableStateOf(false) }
     var picked by remember { mutableStateOf(setOf<String>()) }
     val list = takes.filter { filter == null || it.kind == filter }
+    // 端末の容量：テイクはアプリ内に保存されるので、使うほど増える
+    var storage by remember { mutableStateOf("") }
+    LaunchedEffect(takes) {
+        storage = withContext(Dispatchers.IO) {
+            val used = vm.store.takesDir.listFiles()?.sumOf { it.length() } ?: 0L
+            val free = vm.store.root.usableSpace
+            "この端末に保存中：テイク ${takes.size}件・${fmtBytes(used)}（端末の空き ${fmtBytes(free)}）\n" +
+                "書き出したテイクは、右上の「選択」からまとめて削除すると容量が空きます。"
+        }
+    }
 
     LazyVerticalGrid(
-        GridCells.Fixed(2),
+        GridCells.Adaptive(150.dp),
         Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 18.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(span = { GridItemSpan(2) }) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
                 Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("ライブラリ", color = VM.Tx, fontSize = 26.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
@@ -75,6 +85,10 @@ fun LibraryScreen(vm: MainViewModel, onOpen: (String) -> Unit) {
                     Spacer(Modifier.weight(1f))
                     if (list.isNotEmpty()) Text("${list.size} 件", color = VM.Mu, fontSize = 12.sp)
                 }
+                Text(
+                    storage, color = VM.Mu, fontSize = 12.sp, lineHeight = 17.sp,
+                    modifier = Modifier.padding(top = 10.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(VM.S1).padding(12.dp),
+                )
                 if (selecting) {
                     Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         MoonButton("まとめて書き出す（${picked.size}）", Modifier.weight(1f), primary = false) {
@@ -103,8 +117,14 @@ fun LibraryScreen(vm: MainViewModel, onOpen: (String) -> Unit) {
                 }
             }
         }
-        item(span = { GridItemSpan(2) }) { Spacer(Modifier.size(24.dp)) }
+        item(span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.size(24.dp)) }
     }
+}
+
+private fun fmtBytes(n: Long): String = when {
+    n < 1024L * 1024 -> "${(n / 1024).coerceAtLeast(1)} KB"
+    n < 1024L * 1024 * 1024 -> "%.1f MB".format(n / 1024.0 / 1024.0)
+    else -> "%.2f GB".format(n / 1024.0 / 1024.0 / 1024.0)
 }
 
 @Composable
