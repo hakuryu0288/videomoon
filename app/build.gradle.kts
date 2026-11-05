@@ -16,6 +16,17 @@ android {
         versionName = "0.1.0"
     }
 
+    // 毎回同じ鍵で署名する（鍵が変わると、新しいAPKを上書きインストールできなくなるため）
+    // ※テスト配布用の鍵。Google Playで公開するときは別の鍵を用意すること
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("videomoon-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
