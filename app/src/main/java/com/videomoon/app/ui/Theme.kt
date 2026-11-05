@@ -41,16 +41,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 object VM {
-    val Night = Color(0xFF0A0E1F)
-    val S1 = Color(0xFF121834)
-    val S2 = Color(0xFF1A2142)
-    val S3 = Color(0xFF242C54)
-    val Line = Color(0xFF2C355E)
-    val Tx = Color(0xFFE8E6F0)
-    val Mu = Color(0xFF8C90AD)
-    val Dim = Color(0xFF5D6288)
-    val Moon = Color(0xFFE9DDB4)
-    val Ink = Color(0xFF1A1830)
+    val Night = Color(0xFF0B0B10)
+    val S1 = Color(0xFF14141C)
+    val S2 = Color(0xFF1C1C26)
+    val S3 = Color(0xFF262634)
+    val Line = Color(0xFF2A2A38)
+    val Tx = Color(0xFFF2F0EB)
+    val Mu = Color(0xFF8B8A96)
+    val Dim = Color(0xFF5D5C6A)
+    val Moon = Color(0xFFFF8A00)  // 乙打ちドットコムのアクセント（UO）
+    val Ink = Color(0xFF1A0E00)
     val Rec = Color(0xFFFF5A4E)
     val Ok = Color(0xFF8FD3B6)
     val Warn = Color(0xFFFFC46B)

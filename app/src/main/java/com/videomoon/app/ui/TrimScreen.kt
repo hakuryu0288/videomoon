@@ -187,7 +187,7 @@ fun TrimScreen(vm: MainViewModel, trackId: String, onBack: () -> Unit, onShoot: 
                         for (k in a until b) m = maxOf(m, p[k])
                         val h = (m * (size.height - 36f)).coerceAtLeast(1.5f)
                         val inSel = t0 in clip.startMs..clip.endMs
-                        var col = if (inSel) VM.Moon else Color(0xFF3B4473)
+                        var col = if (inSel) VM.Moon else Color(0xFF3A3A4E)
                         if (inSel && clip.fadeInMs > 0 && t0 < clip.startMs + clip.fadeInMs) col = VM.Moon.copy(alpha = .35f + .65f * (t0 - clip.startMs) / clip.fadeInMs)
                         if (inSel && clip.fadeOutMs > 0 && t0 > clip.endMs - clip.fadeOutMs) col = VM.Moon.copy(alpha = .35f + .65f * (clip.endMs - t0) / clip.fadeOutMs)
                         if (!inSel && clip.prerollMs > 0 && t0 in pre until clip.startMs) col = Color(0xFF7A6A45)

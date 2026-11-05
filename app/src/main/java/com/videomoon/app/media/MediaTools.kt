@@ -159,7 +159,7 @@ object MediaTools {
         out.outputStream().use { s.compress(Bitmap.CompressFormat.JPEG, 80, it) }
     }
 
-    /** 端末のギャラリー（ムービー/videomoon または ピクチャ/videomoon）へ保存 */
+    /** 端末のギャラリー（ムービー/otsuuchicam または ピクチャ/otsuuchicam）へ保存 */
     fun saveToGallery(context: Context, src: File, displayName: String, isVideo: Boolean): Uri {
         val cr = context.contentResolver
         val values = ContentValues().apply {
@@ -167,7 +167,7 @@ object MediaTools {
             put(MediaStore.MediaColumns.MIME_TYPE, if (isVideo) "video/mp4" else "image/jpeg")
             put(
                 MediaStore.MediaColumns.RELATIVE_PATH,
-                (if (isVideo) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES) + "/videomoon"
+                (if (isVideo) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES) + "/otsuuchicam"
             )
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }

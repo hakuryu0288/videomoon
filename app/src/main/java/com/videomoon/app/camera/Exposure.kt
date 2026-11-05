@@ -58,7 +58,7 @@ object Exposure {
     val PRESETS = listOf(
         Preset("オート") { p, _, _ -> p.copy(ae = true, af = true, awbMode = CaptureRequest.CONTROL_AWB_MODE_AUTO, evIndex = 0) },
         Preset("暗いステージ") { p, fps, hz -> p.copy(ae = false, iso = 1600, shutterDen = safeShutter(fps, hz), awbMode = CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT) },
-        Preset("ペンライト") { p, fps, hz -> p.copy(ae = false, iso = 800, shutterDen = safeShutter(fps, hz), awbMode = CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT) },
+        Preset("リウム") { p, fps, hz -> p.copy(ae = false, iso = 800, shutterDen = safeShutter(fps, hz), awbMode = CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT) },
         Preset("屋内照明") { p, fps, hz -> p.copy(ae = false, iso = 640, shutterDen = safeShutter(fps, hz), awbMode = CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT) },
         Preset("屋外") { p, fps, _ -> p.copy(ae = false, iso = 100, shutterDen = shutterStops(fps, null, null).minByOrNull { abs(it - 1000) } ?: 1000, awbMode = CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT) },
     )

@@ -1,16 +1,25 @@
 {
-  "name": "videomoon",
-  "short_name": "videomoon",
-  "description": "音楽を流しながら60fpsで撮れる動画カメラ",
+  "name": "乙打ちカメラ",
+  "short_name": "乙打ちカメラ",
+  "description": "好きな曲を流しながら60fpsで撮れる撮影アプリ（乙打ちドットコム姉妹アプリ）",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#0a0e1f",
-  "theme_color": "#0a0e1f",
+  "background_color": "#0b0b10",
+  "theme_color": "#0b0b10",
   "lang": "ja",
   "icons": [
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "icon.png", "sizes": "180x180", "type": "image/png" }
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
   ]
 }

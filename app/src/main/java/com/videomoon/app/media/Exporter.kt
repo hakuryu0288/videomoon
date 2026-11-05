@@ -59,7 +59,7 @@ object Exporter {
 
     fun fileName(take: Take): String {
         val f = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(take.createdAt))
-        return if (take.fileName.endsWith(".jpg")) "videomoon_$f.jpg" else "videomoon_${f}_${take.fps}p.mp4"
+        return if (take.fileName.endsWith(".jpg")) "otsuuchicam_$f.jpg" else "otsuuchicam_${f}_${take.fps}p.mp4"
     }
 
     /**

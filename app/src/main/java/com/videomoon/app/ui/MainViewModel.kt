@@ -184,6 +184,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         busy.value = null; progress.value = null
-        if (ok > 0) say(if (list.size > 1) "${ok}件をギャラリー（videomoonフォルダ）に保存しました" else "ギャラリー（videomoonフォルダ）に保存しました")
+        if (ok > 0) say(if (list.size > 1) "${ok}件をギャラリー（otsuuchicamフォルダ）に保存しました" else "ギャラリー（otsuuchicamフォルダ）に保存しました")
     }
 }

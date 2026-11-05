@@ -1,7 +1,9 @@
-# videomoon（Android）
+# 乙打ちカメラ
 
-- **APKのダウンロード（Android端末で開く）：** https://github.com/hakuryu0288/videomoon/releases/download/latest/videomoon-debug.apk
-- **ブラウザ版（iPhone・PCで試す）：** https://hakuryu0288.github.io/videomoon/
+[乙打ちドットコム](https://www.otsuuchi.com/) の姉妹アプリ。好きな曲を流しながら60fpsで撮れる撮影アプリです。
+
+- **ブラウザ版（iPhone・Android）：** https://cam.otsuuchi.com
+- **Androidアプリ版（テスト中）：** https://github.com/hakuryu0288/videomoon/releases/download/latest/otsuuchicam.apk
 
 好きな曲の好きな部分を流しながら、なめらかな60fpsで撮れる動画カメラ。
 動画に入るのは流した音楽だけで、周りの音やマイクの音は一切入りません。
@@ -32,7 +34,7 @@
 
 **ライブラリ**
 - テイクはアプリ内に何本でも保存（クリップごとに「テイク 1, 2, 3…」）
-- 書き出し：MP4（H.264 / HEVC）で「ムービー/videomoon」へ。写真は「ピクチャ/videomoon」
+- 書き出し：MP4（H.264 / HEVC）で「ムービー/otsuuchicam」へ。写真は「ピクチャ/otsuuchicam」
 - 2つのテイクを左右に並べて同時再生（比較）、まとめて書き出し・削除
 - 音ズレ補正（±300ms）は再生と書き出しの両方に反映
 
@@ -64,7 +66,7 @@
 ### B. GitHub Actions（PCにAndroid Studioがなくても可）
 1. このフォルダをGitHubのリポジトリにpush
 2. 「Actions」タブ › **Build APK** が自動で走る
-3. 終わると「Releases › latest」に `videomoon-debug.apk` が自動で置かれます（main に push するたびに更新）
+3. 終わると「Releases › latest」に `otsuuchicam.apk` が自動で置かれます（main に push するたびに更新）
 
 ## 動作条件
 - Android 10 以上
@@ -75,4 +77,4 @@
 Spotify・Apple Music・YouTube Music などの曲や YouTube の音声を直接取り込む機能は入れていません。これらは暗号化（DRM）や利用規約でアプリからの切り出しが禁止されており、日本の著作権法でも保護技術を回避した録音は私的利用でも違法になるためです。自分で購入・保存した音声ファイル（iTunes・mora・Bandcamp などで買ったファイルを含む）なら、そのまま取り込めます。
 
 ## prototype/
-`prototype/index.html` はブラウザで動く画面プロトタイプです。GitHub Pages などHTTPSで公開してiPhoneやPCで開くと、実際のカメラを使って「音楽を流しながら撮影→保存」まで試せます（ブラウザの制約で60fpsにならない端末もあります）。
+`prototype/` はブラウザ版（cam.otsuuchi.com）の中身です。main に push すると GitHub Pages に自動で公開されます。

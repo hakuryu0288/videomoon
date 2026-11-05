@@ -1,8 +1,11 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#E9DDB4"
-        android:pathData="M54,30a24,24 0,1 0,0.01 0Z" />
-    <path android:fillColor="#0A0E1F"
-        android:pathData="M63,25a22,22 0,1 0,0.01 0Z" />
+    <!-- 乙打ちドットコムと同じ4色のライト＋ファインダー枠 -->
+    <path android:fillColor="#FF8A00" android:pathData="M37,40h6a2,2 0,0 1,2 2v28a2,2 0,0 1,-2 2h-6a2,2 0,0 1,-2 -2v-28a2,2 0,0 1,2 -2z"/>
+    <path android:fillColor="#FF4D8D" android:pathData="M48,50h6a2,2 0,0 1,2 2v18a2,2 0,0 1,-2 2h-6a2,2 0,0 1,-2 -2v-18a2,2 0,0 1,2 -2z"/>
+    <path android:fillColor="#38B6FF" android:pathData="M59,45h6a2,2 0,0 1,2 2v23a2,2 0,0 1,-2 2h-6a2,2 0,0 1,-2 -2v-23a2,2 0,0 1,2 -2z"/>
+    <path android:fillColor="#3DF08C" android:pathData="M70,55h6a2,2 0,0 1,2 2v13a2,2 0,0 1,-2 2h-6a2,2 0,0 1,-2 -2v-13a2,2 0,0 1,2 -2z"/>
+    <path android:fillColor="#F2F0EB" android:pathData="M28,28h12v3h-9v9h-3z M80,28h-12v3h9v9h3z M28,80h12v-3h-9v-9h-3z M80,80h-12v-3h9v-9h3z"/>
+    <path android:fillColor="#FF4040" android:pathData="M71,36m-3,0a3,3 0,1 0,6 0a3,3 0,1 0,-6 0"/>
 </vector>

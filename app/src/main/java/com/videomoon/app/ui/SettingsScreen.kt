@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -24,6 +25,7 @@ import kotlin.math.roundToInt
 fun SettingsScreen(vm: MainViewModel) {
     val s by vm.settings.collectAsState()
     fun set(f: (com.videomoon.app.data.AppSettings) -> com.videomoon.app.data.AppSettings) = vm.updateSettings(f)
+    val uri = LocalUriHandler.current
     val sliderColors = SliderDefaults.colors(thumbColor = VM.Moon, activeTrackColor = VM.Moon, inactiveTrackColor = VM.S3)
 
     Column(
@@ -67,11 +69,18 @@ fun SettingsScreen(vm: MainViewModel) {
         SettingRow("連続撮影", "止めるまで同じクリップで何テイクも続けて撮ります") { Toggle(s.continuous) { v -> set { it.copy(continuous = v) } } }
         SettingRow("書き出し形式", "HEVCはファイルが小さく、古い端末では再生できないことがあります") { Seg(listOf(false to "H.264", true to "HEVC"), s.hevc, { v -> set { it.copy(hevc = v) } }) }
 
+        Group("乙打ちドットコム")
+        Text("撮った動画をXやYouTubeに投稿したら、乙打ちドットコムに登録して技名から見つけてもらえます。", color = VM.Mu, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+        androidx.compose.foundation.layout.Row(Modifier.padding(top = 10.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+            MoonButton("動画を登録する", Modifier.weight(1f), primary = false) { uri.openUri("https://www.otsuuchi.com/submit") }
+            MoonButton("動画を探す", Modifier.weight(1f), primary = false) { uri.openUri("https://www.otsuuchi.com/") }
+        }
+
         Text(
-            "書き出した動画は「ムービー/videomoon」、写真は「ピクチャ/videomoon」に保存されます。",
+            "書き出した動画は「ムービー/otsuuchicam」、写真は「ピクチャ/otsuuchicam」に保存されます。",
             color = VM.Mu, fontSize = 12.sp, modifier = Modifier.padding(top = 18.dp),
         )
-        Text("videomoon 0.1.0", color = VM.Dim, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp))
+        Text("乙打ちカメラ 0.2.0", color = VM.Dim, fontSize = 12.sp, modifier = Modifier.padding(vertical = 18.dp))
         Spacer(Modifier.height(20.dp))
     }
 }

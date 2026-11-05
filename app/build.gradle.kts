@@ -9,11 +9,11 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.videomoon.app"
+        applicationId = "com.otsuuchi.cam"
         minSdk = 29          // Android 10+（MediaStoreの保存先指定・CameraXの60fps指定を素直に使うため）
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     // 毎回同じ鍵で署名する（鍵が変わると、新しいAPKを上書きインストールできなくなるため）

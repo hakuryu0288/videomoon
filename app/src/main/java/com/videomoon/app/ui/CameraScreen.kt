@@ -592,7 +592,7 @@ private fun RecProgressBar(vm: MainViewModel, track: com.videomoon.app.data.Trac
                 for (i in i0 until i1.coerceAtMost(p.size)) m = maxOf(m, p[i])
                 val h = (m * size.height * .85f).coerceAtLeast(1.5f)
                 drawRect(
-                    if (x.toFloat() / cols < progress) VM.Moon else Color(0xFF4A5490),
+                    if (x.toFloat() / cols < progress) VM.Moon else Color(0xFF4A4A62),
                     Offset(x * 3f, (size.height - h) / 2), Size(2f, h),
                 )
             }
@@ -656,7 +656,7 @@ private fun MoonRecordButton(photoMode: Boolean, recording: Boolean, progress: F
                 arcTo(Rect(c.x - rx, c.y - r, c.x + rx, c.y + r), 90f, if (k > 0) 180f else -180f, false)
                 close()
             }
-            drawPath(path, Color(0xC70A0E1F))
+            drawPath(path, Color(0xC70B0B10))
         }
     }
 }

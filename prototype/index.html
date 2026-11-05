@@ -3,28 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<title>videomoon</title>
-<meta name="theme-color" content="#0a0e1f">
+<title>乙打ちカメラ</title>
+<meta name="theme-color" content="#0b0b10">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="videomoon">
+<meta name="apple-mobile-web-app-title" content="乙打ちカメラ">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Barlow+Semi+Condensed:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Barlow+Semi+Condensed:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --night:#0a0e1f; --s1:#121834; --s2:#1a2142; --s3:#242c54; --line:#2c355e;
-  --tx:#e8e6f0; --mu:#8c90ad; --dim:#5d6288;
-  --moon:#e9ddb4; --moon2:#c9b98a; --rec:#ff5a4e; --ok:#8fd3b6; --warn:#ffc46b;
+  --night:#0b0b10; --s1:#14141c; --s2:#1c1c26; --s3:#262634; --line:#2a2a38;
+  --tx:#f2f0eb; --mu:#8b8a96; --dim:#5d5c6a;
+  --moon:#ff8a00; --moon2:#ffa033; --rec:#ff5a4e; --ok:#8fd3b6; --warn:#ffc46b;
   --sat:14px; --sab:0px;
   --num:'Barlow Semi Condensed',system-ui,sans-serif;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;background:#05070f;color:var(--tx);font-family:'Zen Kaku Gothic New',system-ui,sans-serif;font-size:14px;line-height:1.5}
+html,body{margin:0;height:100%;background:#060609;color:var(--tx);font-family:'Zen Kaku Gothic New',system-ui,sans-serif;font-size:14px;line-height:1.5}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
 button:focus-visible,input:focus-visible,.tab:focus-visible{outline:2px solid var(--moon);outline-offset:2px}
 input[type=range]{accent-color:var(--moon)}
@@ -33,18 +33,25 @@ svg{display:block}
 
 /* ---------- stage (desktop frame) ---------- */
 #stage{min-height:100%;display:flex;gap:48px;align-items:center;justify-content:center;padding:24px;
-  background:radial-gradient(1200px 700px at 30% 20%,#141a3a 0%,#05070f 60%)}
+  background:radial-gradient(1200px 700px at 30% 20%,#1c1a26 0%,#060609 60%)}
 #phone{position:relative;flex:none;width:390px;height:min(844px,calc(100vh - 48px));min-height:640px;border-radius:52px;
-  border:11px solid #161a2c;box-shadow:0 0 0 1px #2a3050,0 40px 120px rgba(0,0,0,.6);overflow:hidden;background:var(--night)}
+  border:11px solid #17171f;box-shadow:0 0 0 1px #2a2a38,0 40px 120px rgba(0,0,0,.6);overflow:hidden;background:var(--night)}
 #statusbar{position:absolute;top:0;left:0;right:0;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 30px 0 34px;
   font-family:var(--num);font-size:15px;font-weight:600;z-index:60;pointer-events:none;color:#fff}
 #statusbar .cam-dot{position:absolute;left:50%;top:12px;width:12px;height:12px;border-radius:50%;background:#000;transform:translateX(-50%);box-shadow:0 0 0 2px #111}
 #app{position:absolute;inset:0;overflow:hidden;background:var(--night);--sat:44px}
 #notes{width:340px;max-height:min(844px,calc(100vh - 48px));overflow:auto;padding:4px 4px 4px 0}
-#notes h1{font-size:28px;font-weight:700;margin:0 0 2px;letter-spacing:.01em;display:flex;align-items:center;gap:10px}
+#notes h1{font-family:'Dela Gothic One',sans-serif;font-size:26px;font-weight:400;margin:0 0 4px;display:flex;align-items:center;gap:12px}
+.penlights{display:inline-flex;gap:4px;align-items:flex-end;height:22px}
+.penlights i{width:4.5px;border-radius:3px;display:block}
+.penlights i:nth-child(1){height:20px;background:#ff8a00;box-shadow:0 0 8px #ff8a00}
+.penlights i:nth-child(2){height:14px;background:#ff4d8d;box-shadow:0 0 8px #ff4d8d}
+.penlights i:nth-child(3){height:17px;background:#38b6ff;box-shadow:0 0 8px #38b6ff}
+.penlights i:nth-child(4){height:11px;background:#3df08c;box-shadow:0 0 8px #3df08c}
+.brand{font-family:'Dela Gothic One',sans-serif;font-weight:400;display:flex;align-items:center;gap:10px}
 #notes .sub{color:var(--mu);margin:0 0 22px}
 #notes h2{font-size:15px;margin:22px 0 8px;color:var(--moon)}
-#notes p,#notes li{color:#c9c8d6;font-size:13.5px}
+#notes p,#notes li{color:#cfcdd6;font-size:13.5px}
 #notes ul{padding-left:18px;margin:6px 0}
 #notes .badge{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:9px;background:var(--s2);color:var(--mu);margin-right:4px}
 @media (max-width:860px),(max-height:500px){
@@ -65,7 +72,7 @@ svg{display:block}
 
 /* tabbar */
 #tabbar{position:absolute;left:0;right:0;bottom:0;height:calc(64px + var(--sab));padding-bottom:var(--sab);display:flex;z-index:40;
-  background:rgba(10,14,31,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid rgba(44,53,94,.7);transition:transform .25s}
+  background:rgba(11,11,16,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid rgba(42,42,56,.7);transition:transform .25s}
 #tabbar.hide{transform:translateY(110%)}
 .tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--dim);font-size:11px}
 .tab svg{width:24px;height:24px}
@@ -80,7 +87,7 @@ svg{display:block}
 #gridLines{position:absolute;pointer-events:none;display:none}
 #gridLines.on{display:block}
 #gridLines i{position:absolute;background:rgba(255,255,255,.28)}
-#frameBox{position:absolute;pointer-events:none;border:1px solid rgba(233,221,180,.0)}
+#frameBox{position:absolute;pointer-events:none;border:1px solid rgba(255,138,0,.0)}
 #countdown{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;font-family:var(--num);font-size:150px;font-weight:500;color:var(--moon);text-shadow:0 4px 40px rgba(0,0,0,.6);opacity:0}
 #countdown.show{animation:cd .9s ease-out}
 @keyframes cd{0%{opacity:0;transform:scale(1.25)}20%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.9)}}
@@ -88,59 +95,59 @@ svg{display:block}
 #flash.go{animation:fl .35s}
 @keyframes fl{0%{opacity:.85}100%{opacity:0}}
 
-.cam-top{position:absolute;left:0;right:0;top:0;padding:calc(var(--sat) + 4px) 12px 10px;background:linear-gradient(rgba(5,7,15,.75),rgba(5,7,15,0));z-index:5}
+.cam-top{position:absolute;left:0;right:0;top:0;padding:calc(var(--sat) + 4px) 12px 10px;background:linear-gradient(rgba(6,6,10,.75),rgba(6,6,10,0));z-index:5}
 .row{display:flex;align-items:center;gap:6px}
-.chip{height:30px;padding:0 10px;border-radius:15px;background:rgba(18,24,52,.72);border:1px solid rgba(44,53,94,.9);display:inline-flex;align-items:center;gap:5px;font-size:12.5px;white-space:nowrap}
+.chip{height:30px;padding:0 10px;border-radius:15px;background:rgba(20,20,28,.72);border:1px solid rgba(42,42,56,.9);display:inline-flex;align-items:center;gap:5px;font-size:12.5px;white-space:nowrap}
 .chip svg{width:15px;height:15px}
-.chip.accent{color:var(--moon);border-color:rgba(233,221,180,.4)}
-.chip.on{background:var(--moon);color:#1a1830;border-color:var(--moon)}
+.chip.accent{color:var(--moon);border-color:rgba(255,138,0,.4)}
+.chip.on{background:var(--moon);color:#1a0e00;border-color:var(--moon)}
 .spacer{flex:1}
 #recTC{font-family:var(--num);font-size:16px;font-weight:600;letter-spacing:.04em;display:flex;align-items:center;gap:6px}
 #recTC .dot{width:9px;height:9px;border-radius:50%;background:var(--dim)}
 .recording #recTC .dot{background:var(--rec);animation:blink 1s steps(2) infinite}
 .recording #recTC{color:#fff}
 @keyframes blink{50%{opacity:.2}}
-#clipChip{margin-top:8px;max-width:100%;height:34px;border-radius:17px;padding:0 12px 0 8px;background:rgba(18,24,52,.72);border:1px solid rgba(44,53,94,.9);display:inline-flex;align-items:center;gap:8px;font-size:13px}
-#clipChip .ico{width:22px;height:22px;border-radius:50%;background:var(--moon);color:#1a1830;display:grid;place-items:center;flex:none}
+#clipChip{margin-top:8px;max-width:100%;height:34px;border-radius:17px;padding:0 12px 0 8px;background:rgba(20,20,28,.72);border:1px solid rgba(42,42,56,.9);display:inline-flex;align-items:center;gap:8px;font-size:13px}
+#clipChip .ico{width:22px;height:22px;border-radius:50%;background:var(--moon);color:#1a0e00;display:grid;place-items:center;flex:none}
 #clipChip .ico svg{width:13px;height:13px}
 #clipChip .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #clipChip .r{color:var(--mu);font-family:var(--num);font-size:13.5px}
-#recBar{display:none;margin-top:8px;height:34px;border-radius:8px;background:rgba(18,24,52,.6);position:relative;overflow:hidden}
+#recBar{display:none;margin-top:8px;height:34px;border-radius:8px;background:rgba(20,20,28,.6);position:relative;overflow:hidden}
 .recording #recBar.has{display:block}
 #recBar canvas{position:absolute;inset:0;width:100%;height:100%}
 #recBar .ph{position:absolute;top:0;bottom:0;width:2px;background:var(--rec);left:0}
 #recBar .pre{position:absolute;left:8px;top:8px;font-size:11.5px;color:var(--warn);display:none}
 
 #sideInfo{position:absolute;right:10px;top:calc(var(--sat) + 96px);display:flex;flex-direction:column;align-items:flex-end;gap:6px;z-index:4}
-#histoBox{width:112px;height:58px;border-radius:8px;background:rgba(5,7,15,.55);border:1px solid rgba(44,53,94,.7);padding:4px}
+#histoBox{width:112px;height:58px;border-radius:8px;background:rgba(6,6,10,.55);border:1px solid rgba(42,42,56,.7);padding:4px}
 #histoBox canvas{width:100%;height:100%}
-#fpsMeter{font-family:var(--num);font-size:12.5px;color:var(--mu);background:rgba(5,7,15,.55);padding:1px 7px;border-radius:7px}
+#fpsMeter{font-family:var(--num);font-size:12.5px;color:var(--mu);background:rgba(6,6,10,.55);padding:1px 7px;border-radius:7px}
 #fpsMeter b{color:var(--tx);font-weight:600}
 #demoTag{position:absolute;left:12px;top:calc(var(--sat) + 96px);z-index:4}
 #warnTag{position:absolute;left:12px;top:calc(var(--sat) + 132px);z-index:4;display:none;color:var(--warn);border-color:rgba(255,196,107,.5)}
 
-.cam-bottom{position:absolute;left:0;right:0;bottom:calc(64px + var(--sab));padding:30px 0 6px;background:linear-gradient(rgba(5,7,15,0),rgba(5,7,15,.82) 38%);z-index:5;transition:bottom .25s}
+.cam-bottom{position:absolute;left:0;right:0;bottom:calc(64px + var(--sab));padding:30px 0 6px;background:linear-gradient(rgba(6,6,10,0),rgba(6,6,10,.82) 38%);z-index:5;transition:bottom .25s}
 .recording .cam-bottom{bottom:calc(10px + var(--sab))}
-#proPanel{display:none;margin:0 10px 8px;padding:10px 12px 12px;border-radius:14px;background:rgba(18,24,52,.92);border:1px solid var(--line)}
+#proPanel{display:none;margin:0 10px 8px;padding:10px 12px 12px;border-radius:14px;background:rgba(20,20,28,.92);border:1px solid var(--line)}
 #proPanel.open{display:block}
 .pp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
 .pp-head .name{font-size:13px;color:var(--mu)}
 .pp-head .val{font-family:var(--num);font-size:22px;font-weight:600;color:var(--moon)}
 .pp-head .val small{font-size:13px;color:var(--mu);font-weight:500;margin-left:6px}
 .pp-auto{height:26px;padding:0 10px;border-radius:13px;border:1px solid var(--line);font-size:12px;color:var(--mu)}
-.pp-auto.on{background:var(--moon);color:#1a1830;border-color:var(--moon)}
+.pp-auto.on{background:var(--moon);color:#1a0e00;border-color:var(--moon)}
 #ppRange{width:100%;margin:6px 0 2px}
 .pp-ticks{display:flex;justify-content:space-between;font-family:var(--num);font-size:11.5px;color:var(--dim)}
 .pp-presets{display:flex;gap:6px;overflow-x:auto;margin-top:8px;scrollbar-width:none}
 .pp-presets::-webkit-scrollbar{display:none}
 .pp-presets .chip{height:28px;font-size:12px;background:var(--s2)}
-#proStrip{display:flex;margin:0 10px;border-radius:12px;background:rgba(10,14,31,.7);border:1px solid rgba(44,53,94,.8);overflow:hidden}
-.pc{flex:1;padding:6px 0 5px;text-align:center;border-right:1px solid rgba(44,53,94,.6);position:relative}
+#proStrip{display:flex;margin:0 10px;border-radius:12px;background:rgba(11,11,16,.7);border:1px solid rgba(42,42,56,.8);overflow:hidden}
+.pc{flex:1;padding:6px 0 5px;text-align:center;border-right:1px solid rgba(42,42,56,.6);position:relative}
 .pc:last-child{border-right:0}
 .pc .l{font-size:10.5px;color:var(--mu);display:block}
 .pc .v{font-family:var(--num);font-size:16px;font-weight:600;display:block;line-height:1.2}
 .pc .l .a{font-family:var(--num);font-size:10px;color:var(--ok);margin-left:3px}
-.pc.sel{background:rgba(233,221,180,.12)}
+.pc.sel{background:rgba(255,138,0,.12)}
 .pc.sel .v{color:var(--moon)}
 .pc.off .v{color:var(--dim)}
 .modes{display:flex;justify-content:center;gap:22px;margin:12px 0 6px;font-size:13.5px}
@@ -148,17 +155,17 @@ svg{display:block}
 .modes button.on{color:var(--moon);font-weight:700}
 .shutter-row{display:flex;align-items:center;justify-content:space-around;padding:2px 26px 4px}
 #lastThumb{width:46px;height:46px;border-radius:10px;background:var(--s2) center/cover;border:2px solid rgba(255,255,255,.2)}
-#flipBtn{width:46px;height:46px;border-radius:50%;background:rgba(18,24,52,.8);display:grid;place-items:center;border:1px solid var(--line)}
+#flipBtn{width:46px;height:46px;border-radius:50%;background:rgba(20,20,28,.8);display:grid;place-items:center;border:1px solid var(--line)}
 #flipBtn svg{width:22px;height:22px}
 .recording #demoTag,.recording #warnTag{display:none!important}
 .recording #sideInfo{top:calc(var(--sat) + 140px)}
 .recording #lastThumb,.recording #flipBtn,.recording .modes,.recording #proStrip,.recording #proPanel{opacity:.25;pointer-events:none}
 
 /* the moon record button */
-#recBtn{width:78px;height:78px;border-radius:50%;padding:5px;border:3px solid rgba(233,221,180,.85);position:relative}
+#recBtn{width:78px;height:78px;border-radius:50%;padding:5px;border:3px solid rgba(255,138,0,.85);position:relative}
 #recBtn svg{width:100%;height:100%}
 #recBtn .disc{fill:var(--moon);transition:fill .2s}
-#recBtn .shade{fill:rgba(10,14,31,.78)}
+#recBtn .shade{fill:rgba(11,11,16,.78)}
 .mode-video #recBtn .disc{fill:var(--rec)}
 .recording #recBtn{border-color:var(--rec)}
 .photo-mode #recBtn{border-color:#fff}
@@ -195,12 +202,12 @@ svg{display:block}
 .lenRow{display:flex;justify-content:space-between;align-items:center;margin:10px 0 16px;padding:10px 12px;border-radius:12px;background:var(--s1)}
 .lenRow .num{font-size:20px;font-weight:600;color:var(--moon)}
 .transport{display:flex;align-items:center;gap:6px;margin-bottom:18px}
-.playBig{width:52px;height:52px;border-radius:50%;background:var(--moon);color:#1a1830;display:grid;place-items:center;flex:none}
+.playBig{width:52px;height:52px;border-radius:50%;background:var(--moon);color:#1a0e00;display:grid;place-items:center;flex:none}
 .playBig svg{width:22px;height:22px}
 .tbtn{white-space:nowrap;height:38px;padding:0 10px;border-radius:10px;background:var(--s1);border:1px solid var(--line);display:inline-flex;align-items:center;gap:6px;font-size:12.5px}
 .tbtn svg{width:16px;height:16px}
 .tbtn.on{border-color:var(--moon);color:var(--moon)}
-.field{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(44,53,94,.55);gap:10px}
+.field{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(42,42,56,.55);gap:10px}
 .field .fl{font-size:14px}
 .field .fd{font-size:11.5px;color:var(--mu)}
 .seg{display:inline-flex;background:var(--s1);border:1px solid var(--line);border-radius:10px;padding:2px;flex:none}
@@ -215,10 +222,10 @@ svg{display:block}
 .clipItem .cn span{font-family:var(--num);color:var(--mu);font-size:13px}
 .clipItem button{color:var(--mu);padding:6px}
 .clipItem button svg{width:18px;height:18px}
-.clipItem.cur{outline:1.5px solid rgba(233,221,180,.5)}
-.trim-foot{position:absolute;left:0;right:0;bottom:0;padding:12px 18px calc(14px + var(--sab));background:linear-gradient(rgba(10,14,31,0),var(--night) 30%);display:flex;gap:8px}
+.clipItem.cur{outline:1.5px solid rgba(255,138,0,.5)}
+.trim-foot{position:absolute;left:0;right:0;bottom:0;padding:12px 18px calc(14px + var(--sab));background:linear-gradient(rgba(11,11,16,0),var(--night) 30%);display:flex;gap:8px}
 .btn{height:50px;border-radius:14px;font-weight:700;font-size:15px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
-.btn.pri{flex:1;background:var(--moon);color:#1a1830}
+.btn.pri{flex:1;background:var(--moon);color:#1a0e00}
 .btn.sec{padding:0 16px;background:var(--s2);border:1px solid var(--line)}
 .btn svg{width:18px;height:18px}
 .nameInput{width:100%;height:42px;border-radius:10px;border:1px solid var(--line);background:var(--s1);color:var(--tx);padding:0 12px;font:inherit}
@@ -228,12 +235,12 @@ svg{display:block}
 #libGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .take{position:relative;aspect-ratio:9/14;border-radius:12px;overflow:hidden;background:var(--s1) center/cover;text-align:left}
 .take.land{aspect-ratio:16/11}
-.take .ov{position:absolute;left:0;right:0;bottom:0;padding:22px 9px 8px;background:linear-gradient(rgba(5,7,15,0),rgba(5,7,15,.9))}
+.take .ov{position:absolute;left:0;right:0;bottom:0;padding:22px 9px 8px;background:linear-gradient(rgba(6,6,10,0),rgba(6,6,10,.9))}
 .take .ov b{display:block;font-size:12.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .take .ov span{font-family:var(--num);font-size:12px;color:var(--mu)}
-.take .bd{position:absolute;top:7px;left:7px;font-family:var(--num);font-size:11.5px;font-weight:600;padding:1px 6px;border-radius:6px;background:rgba(5,7,15,.7)}
+.take .bd{position:absolute;top:7px;left:7px;font-family:var(--num);font-size:11.5px;font-weight:600;padding:1px 6px;border-radius:6px;background:rgba(6,6,10,.7)}
 .take .bd.p{color:var(--moon)}
-.take .us{position:absolute;top:7px;right:7px;font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;background:rgba(255,196,107,.92);color:#1a1830}
+.take .us{position:absolute;top:7px;right:7px;font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;background:rgba(255,196,107,.92);color:#1a0e00}
 .selecting .take .us{display:none}
 .take .ck{position:absolute;top:7px;right:7px;width:22px;height:22px;border-radius:50%;border:2px solid #fff;display:none}
 .selecting .take .ck{display:block}
@@ -247,7 +254,7 @@ svg{display:block}
 @keyframes up{from{transform:translateY(40px);opacity:.4}}
 #sheet .grab{width:38px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 12px}
 #sheet h3{margin:2px 0 4px;font-size:18px}
-#sheet p{color:#c9c8d6;margin:6px 0}
+#sheet p{color:#cfcdd6;margin:6px 0}
 .opt{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px;border-radius:12px;margin-bottom:6px;background:var(--s2)}
 .opt .oi{width:34px;height:34px;border-radius:10px;background:var(--s3);display:grid;place-items:center;flex:none;color:var(--moon)}
 .opt .oi svg{width:18px;height:18px}
@@ -269,21 +276,21 @@ svg{display:block}
 .pl-media{flex:1;position:relative;display:flex;gap:4px;min-height:0}
 .pl-media video,.pl-media img{width:100%;height:100%;object-fit:contain;background:#000;min-width:0}
 .pl-media.cmp video{width:50%}
-.pl-media .lbl{position:absolute;top:8px;font-size:11.5px;padding:2px 8px;border-radius:8px;background:rgba(5,7,15,.7)}
+.pl-media .lbl{position:absolute;top:8px;font-size:11.5px;padding:2px 8px;border-radius:8px;background:rgba(6,6,10,.7)}
 .pl-ctrl{display:none;align-items:center;gap:10px;padding:10px 14px}
 .pl-ctrl.on{display:flex}
 .pl-ctrl input{flex:1}
 .pl-actions{display:flex;justify-content:space-around;padding:10px 6px calc(12px + var(--sab));border-top:1px solid var(--s2)}
-.pl-actions button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11.5px;color:#c9c8d6;min-width:62px}
+.pl-actions button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11.5px;color:#cfcdd6;min-width:62px}
 .pl-actions svg{width:22px;height:22px}
 
 /* review */
 .review-vid{width:100%;max-height:52vh;border-radius:14px;background:#000;object-fit:contain}
 .rv-btns{display:flex;gap:8px;margin-top:12px}
 
-#toast{position:absolute;left:50%;top:calc(var(--sat) + 60px);transform:translate(-50%,-10px);z-index:120;background:rgba(36,44,84,.96);border:1px solid var(--line);padding:9px 14px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;max-width:86%;text-align:center}
+#toast{position:absolute;left:50%;top:calc(var(--sat) + 60px);transform:translate(-50%,-10px);z-index:120;background:rgba(32,32,44,.96);border:1px solid var(--line);padding:9px 14px;border-radius:12px;font-size:13px;opacity:0;pointer-events:none;transition:.25s;max-width:86%;text-align:center}
 #toast.show{opacity:1;transform:translate(-50%,0)}
-#busy{position:absolute;inset:0;z-index:130;background:rgba(5,7,15,.7);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--mu)}
+#busy{position:absolute;inset:0;z-index:130;background:rgba(6,6,10,.7);display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--mu)}
 #busy.on{display:flex}
 .spin{width:30px;height:30px;border-radius:50%;border:3px solid var(--s3);border-top-color:var(--moon);animation:sp 1s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -292,7 +299,7 @@ svg{display:block}
 #phone.landscape #statusbar{display:none}
 #phone.landscape #app{--sat:10px}
 #app.ls{--rail:68px;--sl:env(safe-area-inset-left,0px);--sr:env(safe-area-inset-right,0px)}
-.ls #tabbar{top:0;bottom:0;right:auto;width:calc(var(--rail) + var(--sl));height:auto;padding:6px 0 6px var(--sl);flex-direction:column;border-top:0;border-right:1px solid rgba(44,53,94,.7)}
+.ls #tabbar{top:0;bottom:0;right:auto;width:calc(var(--rail) + var(--sl));height:auto;padding:6px 0 6px var(--sl);flex-direction:column;border-top:0;border-right:1px solid rgba(42,42,56,.7)}
 .ls #tabbar.hide{transform:translateX(-110%)}
 .ls .tab{max-height:80px}
 .ls .page{left:calc(var(--rail) + var(--sl));bottom:0;padding-top:12px;padding-right:calc(18px + var(--sr))}
@@ -316,7 +323,7 @@ svg{display:block}
 .recording.ls .cam-pro{left:calc(8px + var(--sl))}
 .ls #proStrip{margin:0}
 .ls #proPanel{margin:0 0 6px;max-width:540px}
-.ls .cam-shoot{position:absolute;top:0;bottom:0;right:0;width:calc(112px + var(--sr));padding-right:var(--sr);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:linear-gradient(90deg,rgba(5,7,15,0),rgba(5,7,15,.82) 30%)}
+.ls .cam-shoot{position:absolute;top:0;bottom:0;right:0;width:calc(112px + var(--sr));padding-right:var(--sr);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:linear-gradient(90deg,rgba(6,6,10,0),rgba(6,6,10,.82) 30%)}
 .ls .modes{flex-direction:column;align-items:center;gap:4px;margin:0}
 .ls .shutter-row{flex-direction:column;gap:16px;padding:0}
 .ls #flipBtn{order:-1}
@@ -354,7 +361,7 @@ svg{display:block}
         <button id="clipChip"><span class="ico"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 17.5V5l11-2v12.5a3 3 0 1 1-2-2.83V7.4l-7 1.3v8.8a3 3 0 1 1-2-2.83Z"/></svg></span><span class="t">音楽なし</span><span class="r"></span></button>
         <div id="recBar"><canvas id="recWave"></canvas><div class="ph"></div><div class="pre">プリロール中 — まだ録画されていません</div></div>
       </div>
-      <button class="chip" id="demoTag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18h16M7 18V9l5-4 5 4v9"/></svg><span>デモ映像：地下ステージ</span></button>
+      <button class="chip" id="demoTag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 18h16M7 18V9l5-4 5 4v9"/></svg><span>デモ映像：地下芸・ステージ</span></button>
       <button class="chip" id="warnTag">⚠ フリッカーが出る設定です</button>
       <div id="sideInfo">
         <div id="histoBox"><canvas id="histoCv" width="208" height="100"></canvas></div>
@@ -480,8 +487,8 @@ svg{display:block}
 </div>
 
 <aside id="notes">
-  <h1><svg width="30" height="30" viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="#e9ddb4"/><circle cx="68" cy="40" r="40" fill="#0b1022"/></svg>videomoon</h1>
-  <p class="sub">音楽を流しながら撮る、なめらかな動画カメラ。Android版の画面と動きをブラウザで再現したプロトタイプです。</p>
+  <h1><span class="penlights" aria-hidden="true"><i></i><i></i><i></i><i></i></span>乙打ちカメラ</h1>
+  <p class="sub">好きな曲を流しながら、60fpsでなめらかに撮れる撮影アプリ。<a href="https://www.otsuuchi.com/" target="_blank" rel="noopener" style="color:var(--moon)">乙打ちドットコム</a>の姉妹アプリです。</p>
   <button class="chip" id="rotBtn" style="margin:-8px 0 8px">横向きで表示する</button>
   <div id="noteBody"></div>
 </aside>
@@ -587,15 +594,15 @@ $('#fileAudio').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)ad
 $('#fileVideo').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)addFile(f,true)};
 $('#addSample').onclick=async()=>{ac();const tr=await addSample();renderTracks();openTrim(tr.id)};
 
-function drawMiniWave(cv,peaks,a=0,b=1,color='#5d6288',hl=null){const d=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;if(!w)return;cv.width=w*d;cv.height=h*d;const c=cv.getContext('2d');c.scale(d,d);
+function drawMiniWave(cv,peaks,a=0,b=1,color='#5d5c6a',hl=null){const d=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;if(!w)return;cv.width=w*d;cv.height=h*d;const c=cv.getContext('2d');c.scale(d,d);
   const n=peaks.length,i0=Math.floor(a*n),i1=Math.ceil(b*n),bw=2,gap=1,cols=Math.floor(w/(bw+gap));
   for(let x=0;x<cols;x++){const s=i0+Math.floor((i1-i0)*x/cols),e=i0+Math.floor((i1-i0)*(x+1)/cols);let m=0;for(let i=s;i<Math.max(e,s+1);i++)m=Math.max(m,peaks[i]||0);
-    const bh=Math.max(1.5,m*h*.9);c.fillStyle=hl&&hl(x/cols)?'#e9ddb4':color;c.fillRect(x*(bw+gap),(h-bh)/2,bw,bh)}}
+    const bh=Math.max(1.5,m*h*.9);c.fillStyle=hl&&hl(x/cols)?'#ff8a00':color;c.fillRect(x*(bw+gap),(h-bh)/2,bw,bh)}}
 
 function renderTracks(){const L=$('#trackList');L.innerHTML='';
   if(!S.tracks.length){L.innerHTML='<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>まだ音源がありません。<br>端末に保存されている曲を追加するか、サンプル音源で試してみてください。</div>';return}
   for(const tr of S.tracks){const b=document.createElement('button');b.className='trk';
-    b.innerHTML=`<canvas></canvas><div class="meta"><div class="nm"></div><div class="sm num">${fmtS(tr.duration||0)} ・ クリップ ${tr.clips.length}</div></div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5d6288" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>`;
+    b.innerHTML=`<canvas></canvas><div class="meta"><div class="nm"></div><div class="sm num">${fmtS(tr.duration||0)} ・ クリップ ${tr.clips.length}</div></div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5d5c6a" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>`;
     b.querySelector('.nm').textContent=tr.name;b.onclick=()=>openTrim(tr.id);L.appendChild(b);
     const cv=b.querySelector('canvas');const draw=()=>{const p=S.peaks.get(tr.id);if(p)drawMiniWave(cv,p)};
     if(S.peaks.has(tr.id))requestAnimationFrame(draw);else ensureBuffer(tr).then(draw).catch(()=>{})}}
@@ -618,22 +625,22 @@ function drawWave(){const cv=$('#waveCv'),d=devicePixelRatio||1,w=cv.clientWidth
   const p=S.peaks.get(T.tr.id),dur=T.tr.duration,X=t=>(t-T.v0)/(T.v1-T.v0)*w,cl=T.clip;
   const pre=Math.max(0,cl.start-cl.preroll);
   // selection bg
-  c.fillStyle='rgba(233,221,180,.08)';c.fillRect(X(cl.start),0,X(cl.end)-X(cl.start),h);
+  c.fillStyle='rgba(255,138,0,.08)';c.fillRect(X(cl.start),0,X(cl.end)-X(cl.start),h);
   if(cl.preroll>0){c.fillStyle='rgba(255,196,107,.07)';c.fillRect(X(pre),0,X(cl.start)-X(pre),h)}
   const n=p.length,bw=2,gap=1,cols=Math.floor(w/(bw+gap));
   for(let x=0;x<cols;x++){const t0=T.v0+(T.v1-T.v0)*x/cols,t1=T.v0+(T.v1-T.v0)*(x+1)/cols;let m=0;
     for(let i=Math.floor(t0/dur*n);i<=Math.floor(t1/dur*n);i++)m=Math.max(m,p[i]||0);
-    const bh=Math.max(1.5,m*(h-36)),inSel=t0>=cl.start&&t0<=cl.end;let col=inSel?'#e9ddb4':'#3b4473';
-    if(inSel){if(cl.fadeIn&&t0<cl.start+cl.fadeIn)col='rgba(233,221,180,'+(.35+.65*(t0-cl.start)/cl.fadeIn)+')';if(cl.fadeOut&&t0>cl.end-cl.fadeOut)col='rgba(233,221,180,'+(.35+.65*(cl.end-t0)/cl.fadeOut)+')'}
+    const bh=Math.max(1.5,m*(h-36)),inSel=t0>=cl.start&&t0<=cl.end;let col=inSel?'#ff8a00':'#3a3a4e';
+    if(inSel){if(cl.fadeIn&&t0<cl.start+cl.fadeIn)col='rgba(255,138,0,'+(.35+.65*(t0-cl.start)/cl.fadeIn)+')';if(cl.fadeOut&&t0>cl.end-cl.fadeOut)col='rgba(255,138,0,'+(.35+.65*(cl.end-t0)/cl.fadeOut)+')'}
     else if(cl.preroll&&t0>=pre&&t0<cl.start)col='#7a6a45';
     c.fillStyle=col;c.fillRect(x*(bw+gap),(h-bh)/2,bw,bh)}
   // handles
-  for(const [t,side] of [[cl.start,0],[cl.end,1]]){const x=X(t);if(x<-20||x>w+20)continue;c.fillStyle='#e9ddb4';c.fillRect(x-1,0,2,h);
+  for(const [t,side] of [[cl.start,0],[cl.end,1]]){const x=X(t);if(x<-20||x>w+20)continue;c.fillStyle='#ff8a00';c.fillRect(x-1,0,2,h);
     c.beginPath();const y=h-14;c.roundRect?c.roundRect(side?x-16:x,y-12,16,26,5):c.rect(side?x-16:x,y-12,16,26);c.fill();
-    c.fillStyle='#1a1830';c.fillRect(side?x-10:x+5,y-5,1.5,12);c.fillRect(side?x-6:x+9,y-5,1.5,12)}
+    c.fillStyle='#1a0e00';c.fillRect(side?x-10:x+5,y-5,1.5,12);c.fillRect(side?x-6:x+9,y-5,1.5,12)}
   if(T.playhead>=0){const x=X(T.playhead);c.fillStyle='#ff5a4e';c.fillRect(x-1,0,2,h)}
   // ruler ticks
-  c.fillStyle='#5d6288';c.font='11px "Barlow Semi Condensed"';const span=T.v1-T.v0,step=[1,2,5,10,15,30,60].find(s=>span/s<7)||60;
+  c.fillStyle='#5d5c6a';c.font='11px "Barlow Semi Condensed"';const span=T.v1-T.v0,step=[1,2,5,10,15,30,60].find(s=>span/s<7)||60;
   for(let t=Math.ceil(T.v0/step)*step;t<T.v1;t+=step){const x=X(t);c.fillRect(x,0,1,5);c.fillText(fmtS(t),x+3,12)}
 }
 // drag handles
@@ -707,7 +714,7 @@ function closeSheet(){$('#sheetLayer').classList.remove('open');const f=S.sheetC
 $('#sheetBg').onclick=()=>closeSheet();
 
 /* ================= demo scene ================= */
-const SCENES={stage:{lum:1,label:'地下ステージ',indoor:true},lights:{lum:.5,label:'ペンライト',indoor:true},outdoor:{lum:120,label:'屋外・日中',indoor:false}};
+const SCENES={stage:{lum:1,label:'地下芸・ステージ',indoor:true},lights:{lum:.5,label:'リウム芸・暗所',indoor:true},outdoor:{lum:120,label:'屋外・日中',indoor:false}};
 const ISO_STOPS=[50,64,80,100,125,160,200,250,320,400,500,640,800,1000,1250,1600,2000,2500,3200,4000,5000,6400];
 const SHUT_ALL=[24,25,30,40,48,50,60,100,120,125,180,200,240,250,320,400,500,640,800,1000,1600,2000,4000];
 const K=7.5;
@@ -820,7 +827,7 @@ function analyze(){const src=sourceEl();const land=ASP()==='16:9';const w=land?2
   try{anc.drawImage(src,0,0,w,h)}catch(e){return}const d=anc.getImageData(0,0,w,h).data;const hist=new Uint32Array(64);const Y=new Float32Array(w*h);
   for(let i=0,p=0;i<d.length;i+=4,p++){const y=.2126*d[i]+.7152*d[i+1]+.0722*d[i+2];Y[p]=y;hist[Math.min(63,y/4|0)]++}
   if(ST.histo){const hc=$('#histoCv').getContext('2d'),W=208,H=100;hc.clearRect(0,0,W,H);let mx=0;for(const v of hist)mx=Math.max(mx,v);
-    hc.fillStyle='rgba(233,221,180,.75)';for(let i=0;i<64;i++){const bh=Math.sqrt(hist[i]/mx)*H;hc.fillRect(i*W/64,H-bh,W/64-.6,bh)}
+    hc.fillStyle='rgba(255,138,0,.75)';for(let i=0;i<64;i++){const bh=Math.sqrt(hist[i]/mx)*H;hc.fillRect(i*W/64,H-bh,W/64-.6,bh)}
     hc.fillStyle='rgba(255,90,78,.9)';if(hist[63]/(w*h)>.02)hc.fillRect(W-3,0,3,H);if(hist[0]/(w*h)>.15)hc.fillRect(0,0,3,H)}
   const W2=w*2,H2=h*2;ovc.clearRect(0,0,W2,H2);if(!ST.zebra&&!ST.peaking)return;const img=ovc.createImageData(W2,H2),o=img.data,th=ST.zebraLv/100*255,ph=(performance.now()/120|0);
   for(let y=0;y<H2;y++)for(let x=0;x<W2;x++){const p=(y>>1)*w+(x>>1),q=(y*W2+x)*4;
@@ -852,7 +859,7 @@ function drawMoon(p){ // p:0..1 progress -> moon waxes from crescent to full
 let ppSel=null;
 const PRESETS=[{id:'auto',name:'オート',f:()=>{PRO.ae=true;PRO.awb=true;PRO.af=true;PRO.ev=0}},
  {id:'dark',name:'暗いステージ',f:()=>{PRO.ae=false;PRO.iso=1600;PRO.shut=autoShutter();PRO.awb=false;PRO.wb=4800}},
- {id:'stick',name:'ペンライト',f:()=>{PRO.ae=false;PRO.iso=800;PRO.shut=autoShutter();PRO.awb=false;PRO.wb=5600}},
+ {id:'stick',name:'リウム',f:()=>{PRO.ae=false;PRO.iso=800;PRO.shut=autoShutter();PRO.awb=false;PRO.wb=5600}},
  {id:'indoor',name:'屋内照明',f:()=>{PRO.ae=false;PRO.iso=640;PRO.shut=autoShutter();PRO.awb=false;PRO.wb=4000}},
  {id:'outdoor',name:'屋外',f:()=>{PRO.ae=false;PRO.iso=100;PRO.shut=snap(shutStops(),1000);PRO.awb=false;PRO.wb=5600}}];
 function renderPro(){const e=effExposure();$('#vIso').textContent=e.iso;$('#vShut').textContent='1/'+e.shut;$('#vWb').textContent=(PRO.awb?5600:PRO.wb)+'K';
@@ -950,7 +957,7 @@ async function finishRec(r){S.rec=null;setCanvasSize();layoutGuides();app.classL
   if(ST.autoReview)showReview(take);else toast('ライブラリに保存しました')}
 function grabThumb(){const src=sourceEl(),land=ASP()==='16:9',c=document.createElement('canvas');c.width=land?320:180;c.height=land?180:320;
   try{c.getContext('2d').drawImage(src,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.7)}catch(e){return ''}}
-function drawRecWave(a){const cv=$('#recWave');requestAnimationFrame(()=>{const p=S.peaks.get(a.tr.id),d=a.tr.duration;drawMiniWave(cv,p,(a.c.start-(a.c.preroll||0))/d,a.c.end/d,'#4a5490')})}
+function drawRecWave(a){const cv=$('#recWave');requestAnimationFrame(()=>{const p=S.peaks.get(a.tr.id),d=a.tr.duration;drawMiniWave(cv,p,(a.c.start-(a.c.preroll||0))/d,a.c.end/d,'#4a4a62')})}
 function updateRecUI(){const r=S.rec;if(!r){return}let el=0;
   if(r.music){const now=AC.currentTime,tot=r.pre+r.len,pos=now-r.musicT0;$('#recBar .ph').style.left=clamp(pos/tot,0,1)*100+'%';
     const inPre=pos<r.pre;$('#recBar .pre').style.display=inPre?'block':'none';drawMoon(inPre?0:(pos-r.pre)/r.len)}
@@ -973,7 +980,7 @@ function showReview(take){const url=URL.createObjectURL(take.blob);
   <video class="review-vid" id="rvVid" playsinline controls loop src="${url}"></video>
   <button class="btn pri" style="width:100%;margin-top:12px" id="rvExport">写真アプリに保存</button>
   <div class="rv-btns" style="margin-top:8px"><button class="btn sec" style="flex:1;color:var(--rec)" id="rvRetake">消して撮り直す</button><button class="btn sec" style="flex:1" id="rvKeep">保存せず次へ</button></div>
-  <p class="muted small" style="margin-top:8px">保存しなかったテイクもライブラリに残りますが、ブラウザの都合で消えることがあります。</p>`,()=>URL.revokeObjectURL(url));
+  <p class="muted small" style="margin-top:8px">保存しなかったテイクもライブラリに残りますが、ブラウザの都合で消えることがあります。XやYouTubeに投稿したら<a href="https://www.otsuuchi.com/submit" target="_blank" rel="noopener" style="color:var(--moon)">乙打ちドットコムに登録</a>できます。</p>`,()=>URL.revokeObjectURL(url));
   fixDuration($('#rvVid'));$('#rvVid').play().catch(()=>{});
   $('#rvRetake').onclick=async()=>{await deleteTake(take.id);closeSheet();toast('削除しました。もう一度どうぞ');if(ST.countdown===0)startRec()};
   $('#rvKeep').onclick=()=>closeSheet();$('#rvExport').onclick=async()=>{if(await exportTakes([take]))closeSheet()}}
@@ -1040,7 +1047,7 @@ function openCompare(a,b){closePlayerMedia();const m=$('#plMedia');m.className='
   $('#plActions').innerHTML='<button id="cmpBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 5l-7 7 7 7"/></svg>戻る</button>';$('#cmpBack').onclick=()=>openPlayer(a)}
 
 function fileName(t){const d=new Date(t.created),p=n=>String(n).padStart(2,'0');const ext=t.kind==='photo'?'jpg':(t.mime.includes('mp4')?'mp4':'webm');
-  return `videomoon_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}${t.kind==='video'?'_'+t.fps+'p':''}.${ext}`}
+  return `otsuuchicam_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}${t.kind==='video'?'_'+t.fps+'p':''}.${ext}`}
 let DL=null;(async()=>{try{if(window.claude&&window.claude.use)DL=await window.claude.use('downloads')}catch(e){DL=null}})();
 async function markSaved(list){for(const t of list){t.saved=true;await DB.put('takes',t)}if(S.tab==='library')renderLibrary()}
 /** 動画を端末（写真アプリなど）に保存する。成功したテイクには「保存済み」の印を付ける */
@@ -1059,8 +1066,8 @@ async function exportTakes(list){
 
 /* ================= backup ================= */
 // ブラウザのデータが消えても、曲を入れ直せば切り取り範囲と設定が戻るようにする
-function backupName(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `videomoon-backup_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}.json`}
-async function saveBackup(){const data={app:'videomoon',v:1,created:Date.now(),settings:ST,
+function backupName(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `otsuuchicam-backup_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}.json`}
+async function saveBackup(){const data={app:'otsuuchicam',v:1,created:Date.now(),settings:ST,
     tracks:S.tracks.map(t=>({name:t.name,duration:t.duration,isSample:!!t.isSample,clips:t.clips}))};
   const name=backupName(),blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
   if(EMBED&&DL){try{await DL.save({filename:name,data:blob});toast('バックアップを保存しました')}catch(e){toast('保存できませんでした')}return}
@@ -1072,7 +1079,7 @@ async function applyPending(tr){const pend=LS.get('pendingClips',[]);
   const have=new Set(tr.clips.map(c=>c.name+'|'+c.start+'|'+c.end));
   for(const c of pend[i].clips||[])if(!have.has(c.name+'|'+c.start+'|'+c.end))tr.clips.push({...c,id:uid()});
   pend.splice(i,1);LS.set('pendingClips',pend);await DB.put('tracks',tr);return true}
-async function loadBackup(file){try{const d=JSON.parse(await file.text());if(d.app!=='videomoon')throw new Error('x');
+async function loadBackup(file){try{const d=JSON.parse(await file.text());if(d.app!=='otsuuchicam'&&d.app!=='videomoon')throw new Error('x');
     if(d.settings){Object.assign(ST,d.settings);ST.v=2;saveST()}
     LS.set('pendingClips',(d.tracks||[]).filter(t=>t.clips&&t.clips.length));
     let n=0;for(const tr of S.tracks)if(await applyPending(tr))n++;
@@ -1108,15 +1115,19 @@ function renderSettings(){const B=$('#settingsBody');
   ${row('撮影後すぐに確認','撮り直すか残すかをその場で選べます',tog('autoReview'))}
   ${row('連続撮影','止めるまで同じクリップで何テイクも続けて撮ります',tog('continuous'))}
   ${row('書き出し形式','HEVCはファイルが小さく、古い端末では再生できないことがあります',seg('codec',[['H.264','H.264'],['HEVC','HEVC']]))}
+  <h3 class="muted small" style="margin:22px 0 0;font-weight:500">乙打ちドットコム</h3>
+  <div class="hint" style="margin-top:8px">撮った動画をXやYouTubeに投稿したら、乙打ちドットコムに登録して技名から見つけてもらえます。</div>
+  <div class="rv-btns"><a class="btn sec" style="flex:1;text-decoration:none" href="https://www.otsuuchi.com/submit" target="_blank" rel="noopener">動画を登録する</a><a class="btn sec" style="flex:1;text-decoration:none" href="https://www.otsuuchi.com/" target="_blank" rel="noopener">動画を探す</a></div>
   <h3 class="muted small" style="margin:22px 0 0;font-weight:500">バックアップ</h3>
   <div class="hint" style="margin-top:8px">ブラウザのデータが消えても、曲を入れ直すだけで切り取り範囲（クリップ）と設定が戻るように、バックアップファイルを保存しておけます。曲そのものと動画は含まれません。</div>
   <div class="rv-btns"><button class="btn sec" style="flex:1" id="bkSave">バックアップを保存</button><button class="btn sec" style="flex:1" id="bkLoad">バックアップから戻す</button></div>
   <input type="file" id="bkFile" accept=".json,application/json" hidden>
   <h3 class="muted small" style="margin:22px 0 0;font-weight:500">このアプリについて</h3>
   <div class="hint" style="margin-top:8px">${EMBED?'この画面ではカメラが使えないため、CGのデモ映像で撮影を体験できます。音楽は実際に流れ、撮影した動画にも入ります。':'カメラが使える環境では実際のカメラで撮影します。'}<br><br>Android版との違いは画面右（パソコン）か、下のボタンで確認できます。</div>
-  <button class="btn sec" style="width:100%;margin-top:10px" id="showNotes">Android版の仕様を見る</button>
+  <a class="btn sec" style="width:100%;margin-top:10px;text-decoration:none" href="https://github.com/hakuryu0288/videomoon/releases/download/latest/otsuuchicam.apk">Androidアプリ版（テスト中）をダウンロード</a>
+  <button class="btn sec" style="width:100%;margin-top:8px" id="showNotes">Androidアプリ版との違い</button>
   <button class="btn sec" style="width:100%;margin-top:8px;color:var(--rec)" id="wipe">保存したデータをすべて削除</button>
-  <p class="muted small" style="text-align:center;margin-top:16px">videomoon 0.2</p>`;
+  <p class="muted small" style="text-align:center;margin-top:16px">乙打ちカメラ 0.3 ・ <a href="https://www.otsuuchi.com/" target="_blank" rel="noopener" style="color:var(--moon)">乙打ちドットコム</a></p>`;
   $$('#settingsBody .seg').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=s.dataset.k;let v=b.dataset.v;
     if(s.dataset.bool)v=v==='true';else if(!isNaN(parseFloat(v))&&k!=='res'&&k!=='codec'&&k!=='aspect')v=parseFloat(v);ST[k]=v;saveST();
     if(k==='aspect'){setCanvasSize();if(VS.mode==='real')tryRealCamera()}if(k==='fps'){VS.stream=null;if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter()}renderSettings();renderCamUI()}));
@@ -1129,20 +1140,20 @@ function renderSettings(){const B=$('#settingsBody');
 /* ================= notes ================= */
 const NOTES={
  camera:`<h2>撮影画面</h2><p>録画ボタンを押すと、選んだクリップの音楽が流れ始め、同時に録画が始まります。動画の音声はその音楽だけで、マイクの音は一切入りません（Android版はマイク権限そのものを要求しません）。</p>
- <p>録画ボタンは月の満ち欠けで進み具合を表します。クリップの終わりで自動停止し、すぐに確認・撮り直しができます。</p>
- <h2>プロ設定</h2><ul><li>ISO・シャッター・WB・露出補正・フォーカスを個別にオート/マニュアル切替</li><li>シャッターは角度（180°など）も表示</li><li>フリッカー警告：照明の周波数と合わない値で注意</li><li>プリセット：暗いステージ／ペンライト／屋内／屋外</li><li>ヒストグラム・ゼブラ・ピーキング・グリッド</li></ul>
- <p>デモ映像の「ペンライト」でオートと「ペンライト」プリセットを比べると、光の色が白く飛ぶか残るかの違いが分かります。シャッターを遅くすると光の軌跡が伸びます。</p>`,
+ <p>録画ボタンは、曲の進み具合に合わせて光が満ちていきます。クリップの終わりで自動停止し、すぐに確認・撮り直しができます。</p>
+ <h2>プロ設定</h2><ul><li>ISO・シャッター・WB・露出補正・フォーカスを個別にオート/マニュアル切替</li><li>シャッターは角度（180°など）も表示</li><li>フリッカー警告：照明の周波数と合わない値で注意</li><li>プリセット：暗いステージ／リウム／屋内／屋外</li><li>ヒストグラム・ゼブラ・ピーキング・グリッド</li></ul>
+ <p>デモ映像を「リウム芸・暗所」にして、オートと「リウム」プリセットを比べると、光の色が白く飛ぶか残るかの違いが分かります。シャッターを遅くすると光の軌跡が伸びます。</p>`,
  tracks:`<h2>音源</h2><p>端末のフォルダにある曲（MP3・M4A・WAV・FLACなど）や、動画ファイルの音声を読み込めます。Android版では他のアプリの「共有」からも追加できます。</p><p>読み込んだ音源はアプリ内にコピーされるので、元のファイルを動かしても使えます。</p>`,
  trim:`<h2>範囲の切り取り</h2><ul><li>波形の両端をドラッグ、中央をドラッグで範囲ごと移動</li><li>±0.1秒・±1秒の微調整、再生中に「ここを開始に」</li><li>練習用のスロー再生（0.5×・0.75×）</li><li>フェードイン・アウト</li><li>プリロール：少し前から音楽を流し、指定位置から録画</li><li>1曲に何個でもクリップを保存</li></ul>`,
- library:`<h2>ライブラリ</h2><p>撮影したテイクはアプリ内に何本でも保存されます。クリップごとに「テイク 1, 2, 3…」と番号が付きます。</p><ul><li>書き出し：MP4（H.264/HEVC）で「ムービー/videomoon」に保存</li><li>撮り直す：同じクリップを選んだ状態で撮影画面へ</li><li>比較：2つのテイクを左右に並べて同時再生</li><li>まとめて書き出し・削除</li></ul>`,
+ library:`<h2>ライブラリ</h2><p>撮影したテイクはアプリ内に何本でも保存されます。クリップごとに「テイク 1, 2, 3…」と番号が付きます。</p><ul><li>書き出し：MP4（H.264/HEVC）で「ムービー/otsuuchicam」に保存</li><li>撮り直す：同じクリップを選んだ状態で撮影画面へ</li><li>比較：2つのテイクを左右に並べて同時再生</li><li>まとめて書き出し・削除</li></ul>`,
  settings:`<h2>設定</h2><p>音ズレ補正は、端末によって生じる映像と音のわずかなズレを書き出し時に調整します。連続撮影をオンにすると、止めるまで何度でも続けて撮れます。</p>`};
-const NOTES_ALL=`<h2 style="font-size:15px;color:var(--moon)">このプロトタイプとAndroid版の違い</h2><ul style="padding-left:18px;color:#c9c8d6;font-size:13.5px">
+const NOTES_ALL=`<h2 style="font-size:15px;color:var(--moon)">このプロトタイプとAndroid版の違い</h2><ul style="padding-left:18px;color:#cfcdd6;font-size:13.5px">
 <li>カメラ：プレビュー画面では使えないためCGのデモ映像。Android版は実カメラ（60fps対応端末で60fps）</li>
 <li>音声合成：プロトタイプは録画中に音声を直接焼き込み。Android版は無音で録画し、テイクごとに音楽の開始位置を記録して、再生時・書き出し時に正確に合成</li>
 <li>保存：プロトタイプはブラウザ内。Android版はアプリ内ストレージ＋書き出しで端末のギャラリーへ</li>
 <li>露出：デモ映像では明るさ・ノイズ・光の軌跡を再現。Android版はCamera2のマニュアル制御（対応端末のみ）</li></ul>`;
 function renderNotes(){$('#noteBody').innerHTML=(NOTES[S.tab]||'')+'<hr style="border:0;border-top:1px solid var(--line);margin:22px 0">'+NOTES_ALL+
-  (EMBED?`<h2>実際のカメラで試すには</h2><p>このページはプレビュー枠の中で動いているため、カメラと保存が使えません。届いた <b>videomoon-prototype.html</b> をGitHub PagesなどのHTTPSで公開してiPhoneやPCで開くと、実際のカメラで音楽付き撮影と書き出しまで試せます。</p>`:'')}
+  (EMBED?`<h2>実際のカメラで使うには</h2><p>このページはプレビュー枠の中で動いているため、カメラが使えません。スマホで <b>cam.otsuuchi.com</b> を開くと、実際のカメラで撮影できます。</p>`:'')}
 
 /* ================= navigation ================= */
 function showScreen(tab){if(S.rec)return;if(S.tab==='trim'&&tab!=='trim')stopTrim();S.tab=tab;$$('.screen').forEach(s=>s.classList.toggle('active',s.id==='scr-'+tab));
@@ -1170,7 +1181,7 @@ if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location
 (async()=>{setInterval(()=>{const d=new Date();$('#sbTime').textContent=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')},10000);
   applyOrientation();setCanvasSize();await DB.open();await loadTracks();await loadTakes();renderCamUI();showScreen('camera');
   const real=await tryRealCamera();if(real)toast('カメラを使って撮影できます');
-  if(!LS.get('welcomed',false)){openSheet(`<h3>videomoon へようこそ</h3><p>好きな曲の好きな部分を流しながら、なめらかな60fpsで撮影できる動画カメラです。動画に入るのは流した音楽だけ。周りの雑音は入りません。</p><p class="muted small">撮った動画はこのブラウザに一時保存されます。残したいものは「写真アプリに保存」してください。</p>
+  if(!LS.get('welcomed',false)){openSheet(`<h3 class="brand"><span class="penlights" aria-hidden="true"><i></i><i></i><i></i><i></i></span>乙打ちカメラへようこそ</h3><p>好きな曲の好きな部分を流しながら、なめらかな60fpsで撮影できる動画カメラです。動画に入るのは流した音楽だけ。周りの雑音は入りません。</p><p class="muted small">撮った動画はこのブラウザに一時保存されます。残したいものは「写真アプリに保存」してください。</p>
    ${real?'':'<p class="muted small">このプレビューではカメラが使えないため、CGのデモ映像で撮影を体験できます。音楽は実際に流れて、撮った動画にも入ります。</p>'}
    <div class="rv-btns"><button class="btn sec" id="wClose">あとで</button><button class="btn pri" id="wSample">サンプル曲で撮ってみる</button></div>`);
    $('#wClose').onclick=()=>{LS.set('welcomed',true);closeSheet()};
