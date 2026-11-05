@@ -228,7 +228,9 @@ svg{display:block}
 .btn.pri{flex:1;background:var(--moon);color:#1a0e00}
 .btn.sec{padding:0 16px;background:var(--s2);border:1px solid var(--line)}
 .btn svg{width:18px;height:18px}
-.nameInput{width:100%;height:42px;border-radius:10px;border:1px solid var(--line);background:var(--s1);color:var(--tx);padding:0 12px;font:inherit}
+.nameInput{width:100%;height:44px;border-radius:10px;border:1px solid var(--line);background:var(--s2);color:var(--tx);padding:0 12px;font:inherit;font-size:16px}
+.pfStep{display:flex;align-items:center;gap:8px;margin:16px 0 8px;font-weight:700}
+.pfStep b{width:22px;height:22px;border-radius:50%;background:var(--moon);color:#1a0e00;display:grid;place-items:center;font-size:12.5px;font-family:var(--num)}
 
 /* ---------- library ---------- */
 .libTools{display:flex;align-items:center;gap:8px;margin-bottom:14px}
@@ -331,6 +333,21 @@ svg{display:block}
 .ls #sheet{left:0;right:0;margin:0 auto;width:min(560px,100%);max-height:94%}
 .ls .review-vid{max-height:46vh}
 .ls #toast{top:12px}
+/* 横向きで画面の高さが足りないとき（Safariのタブバー表示中など） */
+@media (max-height:420px){
+  .ls .cam-top{padding-top:4px;padding-bottom:8px}
+  .ls .chip{height:28px;font-size:12px}
+  .ls #clipChip{height:30px}
+  .ls #histoBox,.ls #demoTag{display:none}
+  .ls #sideInfo{top:44px}
+  .ls .pc{padding:4px 0 3px}.ls .pc .v{font-size:14px}.ls .pc .l{font-size:10px}
+  .ls #recBtn{width:64px;height:64px}
+  .ls #lastThumb,.ls #flipBtn{width:40px;height:40px}
+  .ls .shutter-row{gap:10px}.ls .cam-shoot{gap:6px}.ls .modes{font-size:12px}
+  .ls .tab{font-size:0;gap:0}
+  .ls #proPanel{padding:8px 10px}
+  .ls #countdown{font-size:90px}
+}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
@@ -355,6 +372,7 @@ svg{display:block}
           <button class="chip accent num" id="chipFps">60p</button>
           <button class="chip num" id="chipRes">1080 · 9:16</button>
           <button class="chip" id="chipTimer" aria-label="カウントダウン"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg><span class="num">3s</span></button>
+          <button class="chip" id="chipFull" style="display:none" aria-label="全画面">⛶</button>
           <span class="spacer"></span>
           <span id="recTC"><span class="dot"></span><span id="tcText">00:00:00</span></span>
         </div>
@@ -903,6 +921,7 @@ $('#chipRes').onclick=()=>{if(S.rec)return;openSheet(`<h3>解像度と画面の�
 $('#chipTimer').onclick=()=>{if(S.rec)return;const o=[0,3,5,10];ST.countdown=o[(o.indexOf(ST.countdown)+1)%4];saveST();renderCamUI()};
 $('#demoTag').onclick=()=>{const k=Object.keys(SCENES);ST.scene=k[(k.indexOf(ST.scene)+1)%k.length];saveST();renderCamUI()};
 $('#warnTag').onclick=()=>{openSheet(`<h3>照明のちらつき（フリッカー）</h3><p>LEDや蛍光灯は電源の周波数に合わせて明滅しています。シャッタースピードがその周期と合わないと、映像に横縞や明るさのムラが出ます。</p><p>${ST.flicker}Hz地域では 1/${2*ST.flicker} や 1/${ST.flicker} が安全です。設定の「フリッカー低減」で地域を選べます。</p><button class="btn pri" style="width:100%;margin-top:8px" id="fixFl">安全な値にする（1/${autoShutter()}）</button>`);$('#fixFl').onclick=()=>{PRO.shut=autoShutter();renderPro();closeSheet()}};
+$('#chipFull').onclick=toggleFs;
 $('#flipBtn').onclick=()=>{ST.facing=ST.facing==='back'?'front':'back';saveST();if(VS.mode==='real')tryRealCamera();renderCamUI();toast(ST.facing==='front'?'前面カメラ':'背面カメラ')};
 $('#lastThumb').onclick=()=>showScreen('library');
 
@@ -979,11 +998,12 @@ function showReview(take){const url=URL.createObjectURL(take.blob);
   openSheet(`<h3>${escapeHtml(take.title)}</h3><p class="muted small num">${take.dur.toFixed(1)}秒 ・ ${take.fps}fps ・ ${take.trackName?'音声：'+escapeHtml(take.trackName):'音声なし'}</p>
   <video class="review-vid" id="rvVid" playsinline controls loop src="${url}"></video>
   <button class="btn pri" style="width:100%;margin-top:12px" id="rvExport">写真アプリに保存</button>
+  <button class="btn sec" style="width:100%;margin-top:8px" id="rvPost">乙打ちドットコムに投稿</button>
   <div class="rv-btns" style="margin-top:8px"><button class="btn sec" style="flex:1;color:var(--rec)" id="rvRetake">消して撮り直す</button><button class="btn sec" style="flex:1" id="rvKeep">保存せず次へ</button></div>
   <p class="muted small" style="margin-top:8px">保存しなかったテイクもライブラリに残りますが、ブラウザの都合で消えることがあります。XやYouTubeに投稿したら<a href="https://www.otsuuchi.com/submit" target="_blank" rel="noopener" style="color:var(--moon)">乙打ちドットコムに登録</a>できます。</p>`,()=>URL.revokeObjectURL(url));
   fixDuration($('#rvVid'));$('#rvVid').play().catch(()=>{});
   $('#rvRetake').onclick=async()=>{await deleteTake(take.id);closeSheet();toast('削除しました。もう一度どうぞ');if(ST.countdown===0)startRec()};
-  $('#rvKeep').onclick=()=>closeSheet();$('#rvExport').onclick=async()=>{if(await exportTakes([take]))closeSheet()}}
+  $('#rvKeep').onclick=()=>closeSheet();$('#rvPost').onclick=()=>openPostFlow(take);$('#rvExport').onclick=async()=>{if(await exportTakes([take]))closeSheet()}}
 function fixDuration(v){v.addEventListener('loadedmetadata',function f(){if(v.duration===Infinity){v.currentTime=1e7;v.addEventListener('timeupdate',function g(){v.removeEventListener('timeupdate',g);v.currentTime=0},{once:true})}v.removeEventListener('loadedmetadata',f)})}
 
 /* ================= library ================= */
@@ -1020,14 +1040,15 @@ function openPlayer(t){closePlayerMedia();const m=$('#plMedia');m.className='pl-
   if(t.kind==='video'){const v=document.createElement('video');v.src=url;v.controls=true;v.playsInline=true;v.loop=true;m.appendChild(v);fixDuration(v);v.play().catch(()=>{})}
   else{const i=document.createElement('img');i.src=url;m.appendChild(i)}
   const acts=[['export','保存','<path d="M12 3v12M7 8l5-5 5 5M5 15v5h14v-5"/>'],];
-  if(t.kind==='video'){acts.push(['retake','撮り直す','<path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 3v5h5"/>']);acts.push(['compare','比較','<rect x="3" y="5" width="8" height="14" rx="1.5"/><rect x="13" y="5" width="8" height="14" rx="1.5"/>'])}
+  if(t.kind==='video'){acts.push(['retake','撮り直す','<path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 3v5h5"/>']);acts.push(['post','投稿','<path d="M4 12l16-8-6 16-3-7z"/>']);acts.push(['compare','比較','<rect x="3" y="5" width="8" height="14" rx="1.5"/><rect x="13" y="5" width="8" height="14" rx="1.5"/>'])}
   acts.push(['delete','削除','<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>']);
   $('#plActions').innerHTML=acts.map(a=>`<button data-a="${a[0]}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${a[2]}</svg>${a[1]}</button>`).join('');
   $$('#plActions button').forEach(b=>b.onclick=async()=>{const k=b.dataset.a;
     if(k==='export')exportTakes([t]);
     if(k==='delete'){await deleteTake(t.id);closePlayer();renderLibrary();toast('削除しました')}
     if(k==='retake'){if(t.clipId&&t.trackId)setActiveClip(t.trackId,t.clipId);closePlayer();showScreen('camera');toast('同じクリップで撮影できます')}
-    if(k==='compare')pickCompare(t)});
+    if(k==='compare')pickCompare(t);
+    if(k==='post')openPostFlow(t)});
   $('#player').classList.add('open')}
 function closePlayerMedia(){$$('#plMedia video').forEach(v=>{v.pause();v.removeAttribute('src');v.load()});$('#plMedia').innerHTML='';PL.urls.forEach(u=>URL.revokeObjectURL(u));PL.urls=[];clearInterval(PL.sync)}
 function closePlayer(){closePlayerMedia();$('#player').classList.remove('open')}
@@ -1063,6 +1084,39 @@ async function exportTakes(list){
     catch(e){if(e&&e.name!=='AbortError')toast('共有できませんでした');return false}}
   list.forEach((t,i)=>setTimeout(()=>{const u=URL.createObjectURL(t.blob),a=document.createElement('a');a.href=u;a.download=fileName(t);document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000)},i*400));
   await markSaved(list);toast(list.length>1?list.length+'件を保存しました':'保存しました');return true}
+
+/* ================= 乙打ちドットコムへの投稿 ================= */
+// 乙打ちドットコムは X / YouTube の投稿を登録するサイト。Xに投稿 → そのURLで登録、の2ステップ
+const OTSUUCHI='https://www.otsuuchi.com';
+function validPostUrl(u){try{const x=new URL(u.trim());return /(^|\.)(x|twitter)\.com$/.test(x.hostname)&&/\/status\/\d+/.test(x.pathname)||/(^|\.)(youtube\.com|youtu\.be)$/.test(x.hostname)}catch(e){return false}}
+function openPostFlow(take){let cat=LS.get('postCat','chika');
+  openSheet(`<h3>乙打ちドットコムに投稿</h3><p class="muted small">乙打ちドットコムはXやYouTubeの投稿を登録するサイトです。Xに投稿してから、そのURLで登録します。</p>
+  <div class="pfStep"><b>1</b>Xに投稿する</div>
+  <button class="btn pri" style="width:100%" id="pfShare">動画を共有してXに投稿</button>
+  <p class="muted small" style="margin-top:6px">共有画面で「X」を選びます。打ち手のXアカウントもタグ付けしておくと親切です。</p>
+  <div class="pfStep"><b>2</b>投稿したポストのURLで登録</div>
+  <div style="display:flex;gap:6px"><input class="nameInput" id="pfUrl" type="url" inputmode="url" placeholder="https://x.com/…/status/…"><button class="btn sec" id="pfPaste" style="height:44px;flex:none">貼り付け</button></div>
+  <div class="seg" id="pfCat" style="margin-top:10px"><button data-v="chika" class="jp">地下芸</button><button data-v="cyalume" class="jp">リウム芸</button></div>
+  <button class="btn pri" style="width:100%;margin-top:12px" id="pfGo">乙打ちドットコムで登録を続ける</button>`);
+  const segUp=()=>$$('#pfCat button').forEach(b=>b.classList.toggle('on',b.dataset.v===cat));segUp();
+  $$('#pfCat button').forEach(b=>b.onclick=()=>{cat=b.dataset.v;LS.set('postCat',cat);segUp()});
+  $('#pfShare').onclick=async()=>{
+    try{const f=new File([take.blob],fileName(take),{type:take.blob.type||take.mime});
+      if(!EMBED&&navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],text:'#乙打ちドットコム #ヲタ芸'});return}}catch(e){if(e&&e.name==='AbortError')return}
+    await exportTakes([take]);window.open('https://x.com/intent/post?text='+encodeURIComponent('#乙打ちドットコム #ヲタ芸'),'_blank','noopener');toast('動画を保存しました。Xの投稿画面で動画を添付してください',3500)};
+  $('#pfPaste').onclick=async()=>{try{const t=await navigator.clipboard.readText();if(t)$('#pfUrl').value=t.trim()}catch(e){toast('長押しして貼り付けてください')}};
+  $('#pfGo').onclick=()=>{const u=$('#pfUrl').value.trim();if(!validPostUrl(u)){toast('XかYouTubeの投稿URLを貼ってください');return}
+    window.open(`${OTSUUCHI}/submit?category=${cat}&url=${encodeURIComponent(u)}`,'_blank','noopener');closeSheet()}}
+
+/* ================= 全画面 ================= */
+const FS_OK=!!(document.fullscreenEnabled||document.webkitFullscreenEnabled);
+function inFs(){return !!(document.fullscreenElement||document.webkitFullscreenElement)}
+async function toggleFs(){try{if(inFs()){(document.exitFullscreen||document.webkitExitFullscreen).call(document)}else{const el=document.documentElement;await (el.requestFullscreen||el.webkitRequestFullscreen).call(el,{navigationUI:'hide'})}}catch(e){toast('全画面にできませんでした')}}
+function updateFsChip(){const c=$('#chipFull');if(!c)return;c.style.display=(FS_OK&&!STANDALONE&&!EMBED)?'inline-flex':'none';c.textContent=inFs()?'全画面を終了':'⛶ 全画面'}
+document.addEventListener('fullscreenchange',updateFsChip);document.addEventListener('webkitfullscreenchange',updateFsChip);
+// iPhoneのSafariはページを全画面にできないので、横向きにしたとき一度だけ案内する
+function maybeFsHint(){if(!IOS||STANDALONE||EMBED||FS_OK||!isLand()||S.tab!=='camera'||S.rec||LS.get('fsHint',false))return;LS.set('fsHint',true);
+  openSheet(`<h3>横向きを全画面で使うには</h3><p>iPhoneのSafariでは、ページを全画面にできません。Safariの共有ボタンから<b>「ホーム画面に追加」</b>して、ホーム画面のアイコンから開くと、タブやアドレスバーのない全画面で撮影できます。</p><p class="muted small">ホーム画面から開くと、撮った動画も消えにくくなります。</p><button class="btn pri" style="width:100%;margin-top:8px" id="fsOk">わかった</button>`);$('#fsOk').onclick=closeSheet}
 
 /* ================= backup ================= */
 // ブラウザのデータが消えても、曲を入れ直せば切り取り範囲と設定が戻るようにする
@@ -1168,7 +1222,7 @@ let lastLand=null;
 function applyOrientation(){const l=isLand();app.classList.toggle('ls',l);$('#rotBtn').textContent=phoneEl.classList.contains('landscape')?'縦向きで表示する':'横向きで表示する';
   if(l===lastLand)return;lastLand=l;
   if(!S.rec&&!S.counting){setCanvasSize();if(VS.mode==='real'&&ST.aspect==='auto')tryRealCamera()}
-  requestAnimationFrame(()=>{layoutGuides();if(S.tab==='trim')drawWave();if(S.tab==='camera')renderCamUI()})}
+  requestAnimationFrame(()=>{layoutGuides();if(S.tab==='trim')drawWave();if(S.tab==='camera')renderCamUI();maybeFsHint()})}
 mqLand.addEventListener('change',applyOrientation);window.addEventListener('resize',applyOrientation);
 $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation();setTimeout(()=>{layoutGuides();if(S.tab==='trim')drawWave()},50)};
 
@@ -1179,7 +1233,7 @@ if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location
 
 /* ================= boot ================= */
 (async()=>{setInterval(()=>{const d=new Date();$('#sbTime').textContent=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')},10000);
-  applyOrientation();setCanvasSize();await DB.open();await loadTracks();await loadTakes();renderCamUI();showScreen('camera');
+  applyOrientation();updateFsChip();setCanvasSize();await DB.open();await loadTracks();await loadTakes();renderCamUI();showScreen('camera');
   const real=await tryRealCamera();if(real)toast('カメラを使って撮影できます');
   if(!LS.get('welcomed',false)){openSheet(`<h3 class="brand"><span class="penlights" aria-hidden="true"><i></i><i></i><i></i><i></i></span>乙打ちカメラへようこそ</h3><p>好きな曲の好きな部分を流しながら、なめらかな60fpsで撮影できる動画カメラです。動画に入るのは流した音楽だけ。周りの雑音は入りません。</p><p class="muted small">撮った動画はこのブラウザに一時保存されます。残したいものは「写真アプリに保存」してください。</p>
    ${real?'':'<p class="muted small">このプレビューではカメラが使えないため、CGのデモ映像で撮影を体験できます。音楽は実際に流れて、撮った動画にも入ります。</p>'}
