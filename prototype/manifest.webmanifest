@@ -1,0 +1,16 @@
+{
+  "name": "videomoon",
+  "short_name": "videomoon",
+  "description": "音楽を流しながら60fpsで撮れる動画カメラ",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0e1f",
+  "theme_color": "#0a0e1f",
+  "lang": "ja",
+  "icons": [
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
-<title>videomoon プロトタイプ</title>
+<title>videomoon</title>
 <meta name="theme-color" content="#0a0e1f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="videomoon">
 <link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -232,6 +233,8 @@ svg{display:block}
 .take .ov span{font-family:var(--num);font-size:12px;color:var(--mu)}
 .take .bd{position:absolute;top:7px;left:7px;font-family:var(--num);font-size:11.5px;font-weight:600;padding:1px 6px;border-radius:6px;background:rgba(5,7,15,.7)}
 .take .bd.p{color:var(--moon)}
+.take .us{position:absolute;top:7px;right:7px;font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;background:rgba(255,196,107,.92);color:#1a1830}
+.selecting .take .us{display:none}
 .take .ck{position:absolute;top:7px;right:7px;width:22px;height:22px;border-radius:50%;border:2px solid #fff;display:none}
 .selecting .take .ck{display:block}
 .take.picked .ck{background:var(--moon);border-color:var(--moon)}
@@ -441,7 +444,7 @@ svg{display:block}
         <div id="storageInfo" class="hint" style="margin:0 0 12px"></div>
         <div id="libGrid"></div>
         <div id="libEmpty" class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="5" width="13" height="14" rx="2"/><path d="M16 10l5-3v10l-5-3"/></svg>撮影したテイクはここに並びます。<br>アプリ内に好きなだけ保存しておけます。</div>
-        <div id="selBar" style="display:none;margin-top:14px;gap:8px"><button class="btn sec" style="flex:1" id="selExport">まとめて書き出す</button><button class="btn sec" id="selDelete" style="color:var(--rec)">削除</button></div>
+        <div id="selBar" style="display:none;margin-top:14px;gap:8px"><button class="btn sec" style="flex:1" id="selExport">まとめて保存</button><button class="btn sec" id="selDelete" style="color:var(--rec)">削除</button></div>
       </div>
     </section>
 
@@ -571,12 +574,12 @@ async function ensureBuffer(tr){if(S.buffers.has(tr.id))return S.buffers.get(tr.
 async function addSample(){let tr=S.tracks.find(t=>t.isSample);
   if(!tr){busy(true,'サンプル音源を作成中…');tr={id:uid(),name:'Moonlight Groove（サンプル）',isSample:true,created:Date.now(),bpm:SAMPLE_BPM,
     clips:[{id:uid(),name:'サビ',start:22.5,end:37.5,fadeIn:0,fadeOut:0.5,preroll:0}]};
-    S.tracks.push(tr);await ensureBuffer(tr);tr.duration=S.buffers.get(tr.id).duration;await DB.put('tracks',tr);busy(false)}
+    S.tracks.push(tr);await ensureBuffer(tr);tr.duration=S.buffers.get(tr.id).duration;await DB.put('tracks',tr);await applyPending(tr);busy(false)}
   return tr}
 async function addFile(file,fromVideo){busy(true,fromVideo?'動画から音声を取り出し中…':'音源を読み込み中…');
   try{const ab=await file.arrayBuffer();const buf=await ac().decodeAudioData(ab.slice(0));
     const tr={id:uid(),name:file.name.replace(/\.[^.]+$/,''),blob:new Blob([ab],{type:file.type||'audio/mpeg'}),created:Date.now(),duration:buf.duration,clips:[]};
-    S.buffers.set(tr.id,buf);S.peaks.set(tr.id,computePeaks(buf));S.tracks.push(tr);await DB.put('tracks',tr);busy(false);renderTracks();openTrim(tr.id)}
+    S.buffers.set(tr.id,buf);S.peaks.set(tr.id,computePeaks(buf));S.tracks.push(tr);await DB.put('tracks',tr);if(await applyPending(tr))toast('バックアップからクリップを戻しました');busy(false);renderTracks();openTrim(tr.id)}
   catch(e){busy(false);toast('このファイルは読み込めませんでした。MP3・M4A・WAVなどの音声ファイルを選んでください。',3500)}}
 $('#addTrackBtn').onclick=()=>{ac();$('#fileAudio').click()};
 $('#addVideoAudio').onclick=()=>{ac();$('#fileVideo').click()};
@@ -968,11 +971,12 @@ function updateLastThumb(){const t=S.takes[0];$('#lastThumb').style.backgroundIm
 function showReview(take){const url=URL.createObjectURL(take.blob);
   openSheet(`<h3>${escapeHtml(take.title)}</h3><p class="muted small num">${take.dur.toFixed(1)}秒 ・ ${take.fps}fps ・ ${take.trackName?'音声：'+escapeHtml(take.trackName):'音声なし'}</p>
   <video class="review-vid" id="rvVid" playsinline controls loop src="${url}"></video>
-  <div class="rv-btns"><button class="btn sec" style="flex:1;color:var(--rec)" id="rvRetake">消して撮り直す</button><button class="btn pri" id="rvKeep">残して次へ</button></div>
-  <button class="btn sec" style="width:100%;margin-top:8px" id="rvExport">書き出して端末に保存</button>`,()=>URL.revokeObjectURL(url));
+  <button class="btn pri" style="width:100%;margin-top:12px" id="rvExport">写真アプリに保存</button>
+  <div class="rv-btns" style="margin-top:8px"><button class="btn sec" style="flex:1;color:var(--rec)" id="rvRetake">消して撮り直す</button><button class="btn sec" style="flex:1" id="rvKeep">保存せず次へ</button></div>
+  <p class="muted small" style="margin-top:8px">保存しなかったテイクもライブラリに残りますが、ブラウザの都合で消えることがあります。</p>`,()=>URL.revokeObjectURL(url));
   fixDuration($('#rvVid'));$('#rvVid').play().catch(()=>{});
   $('#rvRetake').onclick=async()=>{await deleteTake(take.id);closeSheet();toast('削除しました。もう一度どうぞ');if(ST.countdown===0)startRec()};
-  $('#rvKeep').onclick=()=>closeSheet();$('#rvExport').onclick=()=>exportTakes([take])}
+  $('#rvKeep').onclick=()=>closeSheet();$('#rvExport').onclick=async()=>{if(await exportTakes([take]))closeSheet()}}
 function fixDuration(v){v.addEventListener('loadedmetadata',function f(){if(v.duration===Infinity){v.currentTime=1e7;v.addEventListener('timeupdate',function g(){v.removeEventListener('timeupdate',g);v.currentTime=0},{once:true})}v.removeEventListener('loadedmetadata',f)})}
 
 /* ================= library ================= */
@@ -981,17 +985,19 @@ const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='Mac
 const STANDALONE=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 function fmtBytes(n){if(n<1024*1024)return Math.max(1,Math.round(n/1024))+' KB';if(n<1024**3)return (n/1024/1024).toFixed(1)+' MB';return (n/1024**3).toFixed(2)+' GB'}
 async function renderStorage(){const el=$('#storageInfo');const sum=S.takes.reduce((a,t)=>a+((t.blob&&t.blob.size)||0),0);
-  let h=`この端末に保存中：テイク ${S.takes.length}件・${fmtBytes(sum)}`;
+  const unsaved=S.takes.filter(t=>!t.saved);
+  let h=`撮った動画は、このブラウザに<b>一時保存</b>されています（${S.takes.length}件・${fmtBytes(sum)}）`;
   try{if(navigator.storage&&navigator.storage.estimate){const e=await navigator.storage.estimate();if(e.quota&&e.usage!=null)h+=`（このアプリが使える残り 約${fmtBytes(Math.max(0,e.quota-e.usage))}）`}}catch(e){}
-  h+='<br>書き出したテイクは、右上の「選択」からまとめて削除すると容量が空きます。';
+  h+='<br>ブラウザの都合で消えることがあるので、残したい動画は「保存」で写真アプリへ移してください。保存済みのものは「選択」から消すと容量が空きます。';
+  if(unsaved.length)h+=`<button class="btn pri" id="saveAllBtn" style="width:100%;height:44px;margin-top:10px">未保存の${unsaved.length}件をまとめて保存</button>`;
   if(IOS&&!STANDALONE&&!EMBED)h+='<br><b style="color:var(--warn)">Safariの共有ボタンから「ホーム画面に追加」して使ってください。</b>Safariで開いたまま使うと、このページを開かない日が7日続いたときに保存したテイクが消えることがあります。';
-  el.innerHTML=h}
+  el.innerHTML=h;const sb=$('#saveAllBtn');if(sb)sb.onclick=()=>exportTakes(S.takes.filter(t=>!t.saved))}
 function askPersist(){try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}}
 function renderLibrary(){renderStorage();const g=$('#libGrid');g.innerHTML='';const list=S.takes.filter(t=>S.libFilter==='all'||t.kind===S.libFilter);
   $('#libEmpty').style.display=list.length?'none':'block';$('#libCount').textContent=list.length?list.length+' 件':'';
   $('#scr-library').classList.toggle('selecting',S.selecting);$('#selBtn').textContent=S.selecting?'完了':'選択';$('#selBar').style.display=S.selecting?'flex':'none';
   for(const t of list){const b=document.createElement('button');b.className='take'+(t.aspect==='16:9'?' land':'')+(S.picked.has(t.id)?' picked':'');b.style.backgroundImage=t.thumb?`url(${t.thumb})`:'';
-    const d=new Date(t.created);b.innerHTML=`<span class="bd ${t.kind==='photo'?'p':''}">${t.kind==='photo'?'写真':t.fps+'p'}</span><span class="ck"></span><div class="ov"><b></b><span>${t.kind==='video'?t.dur.toFixed(1)+'秒 ・ ':''}${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}</span></div>`;
+    const d=new Date(t.created);b.innerHTML=`<span class="bd ${t.kind==='photo'?'p':''}">${t.kind==='photo'?'写真':t.fps+'p'}</span>${t.saved?'':'<span class="us">未保存</span>'}<span class="ck"></span><div class="ov"><b></b><span>${t.kind==='video'?t.dur.toFixed(1)+'秒 ・ ':''}${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}</span></div>`;
     b.querySelector('b').textContent=t.title;b.onclick=()=>{if(S.selecting){S.picked.has(t.id)?S.picked.delete(t.id):S.picked.add(t.id);renderLibrary()}else openPlayer(t)};g.appendChild(b)}}
 $$('#segLib button').forEach(b=>b.onclick=()=>{S.libFilter=b.dataset.v;$$('#segLib button').forEach(x=>x.classList.toggle('on',x===b));renderLibrary()});
 $('#selBtn').onclick=()=>{S.selecting=!S.selecting;S.picked.clear();renderLibrary()};
@@ -1006,7 +1012,7 @@ function openPlayer(t){closePlayerMedia();const m=$('#plMedia');m.className='pl-
   const url=URL.createObjectURL(t.blob);PL.urls.push(url);
   if(t.kind==='video'){const v=document.createElement('video');v.src=url;v.controls=true;v.playsInline=true;v.loop=true;m.appendChild(v);fixDuration(v);v.play().catch(()=>{})}
   else{const i=document.createElement('img');i.src=url;m.appendChild(i)}
-  const acts=[['export','書き出す','<path d="M12 3v12M7 8l5-5 5 5M5 15v5h14v-5"/>'],];
+  const acts=[['export','保存','<path d="M12 3v12M7 8l5-5 5 5M5 15v5h14v-5"/>'],];
   if(t.kind==='video'){acts.push(['retake','撮り直す','<path d="M4 12a8 8 0 1 0 3-6.2"/><path d="M4 3v5h5"/>']);acts.push(['compare','比較','<rect x="3" y="5" width="8" height="14" rx="1.5"/><rect x="13" y="5" width="8" height="14" rx="1.5"/>'])}
   acts.push(['delete','削除','<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>']);
   $('#plActions').innerHTML=acts.map(a=>`<button data-a="${a[0]}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${a[2]}</svg>${a[1]}</button>`).join('');
@@ -1036,17 +1042,43 @@ function openCompare(a,b){closePlayerMedia();const m=$('#plMedia');m.className='
 function fileName(t){const d=new Date(t.created),p=n=>String(n).padStart(2,'0');const ext=t.kind==='photo'?'jpg':(t.mime.includes('mp4')?'mp4':'webm');
   return `videomoon_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}${t.kind==='video'?'_'+t.fps+'p':''}.${ext}`}
 let DL=null;(async()=>{try{if(window.claude&&window.claude.use)DL=await window.claude.use('downloads')}catch(e){DL=null}})();
+async function markSaved(list){for(const t of list){t.saved=true;await DB.put('takes',t)}if(S.tab==='library')renderLibrary()}
+/** 動画を端末（写真アプリなど）に保存する。成功したテイクには「保存済み」の印を付ける */
 async function exportTakes(list){
-  if(EMBED&&DL){for(const t of list){try{await DL.save({filename:fileName(t),data:t.blob});toast('書き出しました：'+fileName(t))}
-      catch(e){const c=e&&e.code;if(c==='declined'){toast('書き出しをキャンセルしました');return}if(c==='rate_limited'){toast('少し待ってからもう一度お試しください');return}
-        toast('この画面では書き出せませんでした');return}}return}
-  if(EMBED){openSheet(`<h3>書き出し</h3><p>Android版では、${list.length>1?list.length+'本の動画を':'この動画を'}<b>ムービー › videomoon</b> フォルダに保存し、ギャラリーやSNSアプリからすぐ使えるようにします（MP4 ・ ${ST.codec}）。</p>
-    <p class="muted small">この表示環境では端末へのファイル保存ができません。</p><button class="btn sec" style="width:100%" id="exOk">閉じる</button>`);$('#exOk').onclick=closeSheet;return}
-  // iPhoneなど：共有シートから「ビデオを保存」で写真アプリに入れられる
-  try{const files=list.map(t=>new File([t.blob],fileName(t),{type:t.blob.type||t.mime}));
-    if(navigator.canShare&&navigator.canShare({files})){navigator.share({files}).then(()=>toast('共有シートから保存しました')).catch(e=>{if(e&&e.name!=='AbortError')toast('共有できませんでした')});return}}catch(e){}
+  if(EMBED&&DL){const ok=[];for(const t of list){try{await DL.save({filename:fileName(t),data:t.blob});ok.push(t)}
+      catch(e){const c=e&&e.code;toast(c==='declined'?'保存をキャンセルしました':c==='rate_limited'?'少し待ってからもう一度お試しください':'この画面では保存できませんでした');break}}
+    if(ok.length){await markSaved(ok);toast(ok.length>1?ok.length+'件を保存しました':'保存しました')}return ok.length===list.length}
+  if(EMBED){openSheet(`<h3>保存</h3><p>この表示環境では端末へのファイル保存ができません。</p><button class="btn sec" style="width:100%" id="exOk">閉じる</button>`);$('#exOk').onclick=closeSheet;return false}
+  // iPhone・Android：共有シートの「ビデオを保存」で写真アプリへ
+  let files=null;try{files=list.map(t=>new File([t.blob],fileName(t),{type:t.blob.type||t.mime}))}catch(e){}
+  if(files&&navigator.canShare&&navigator.canShare({files})){
+    try{await navigator.share({files});await markSaved(list);toast(list.length>1?list.length+'件を保存しました':'保存しました');return true}
+    catch(e){if(e&&e.name!=='AbortError')toast('共有できませんでした');return false}}
   list.forEach((t,i)=>setTimeout(()=>{const u=URL.createObjectURL(t.blob),a=document.createElement('a');a.href=u;a.download=fileName(t);document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000)},i*400));
-  toast(list.length>1?list.length+'件を書き出しました':'書き出しました')}
+  await markSaved(list);toast(list.length>1?list.length+'件を保存しました':'保存しました');return true}
+
+/* ================= backup ================= */
+// ブラウザのデータが消えても、曲を入れ直せば切り取り範囲と設定が戻るようにする
+function backupName(){const d=new Date(),p=n=>String(n).padStart(2,'0');return `videomoon-backup_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}.json`}
+async function saveBackup(){const data={app:'videomoon',v:1,created:Date.now(),settings:ST,
+    tracks:S.tracks.map(t=>({name:t.name,duration:t.duration,isSample:!!t.isSample,clips:t.clips}))};
+  const name=backupName(),blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
+  if(EMBED&&DL){try{await DL.save({filename:name,data:blob});toast('バックアップを保存しました')}catch(e){toast('保存できませんでした')}return}
+  try{const f=new File([blob],name,{type:'application/json'});if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f]});toast('バックアップを保存しました');return}}
+  catch(e){if(e&&e.name==='AbortError')return}
+  const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),4000);toast('バックアップを保存しました')}
+async function applyPending(tr){const pend=LS.get('pendingClips',[]);
+  const i=pend.findIndex(p=>(p.isSample&&tr.isSample)||(!p.isSample&&p.name===tr.name&&Math.abs((p.duration||0)-(tr.duration||0))<1.5));if(i<0)return false;
+  const have=new Set(tr.clips.map(c=>c.name+'|'+c.start+'|'+c.end));
+  for(const c of pend[i].clips||[])if(!have.has(c.name+'|'+c.start+'|'+c.end))tr.clips.push({...c,id:uid()});
+  pend.splice(i,1);LS.set('pendingClips',pend);await DB.put('tracks',tr);return true}
+async function loadBackup(file){try{const d=JSON.parse(await file.text());if(d.app!=='videomoon')throw new Error('x');
+    if(d.settings){Object.assign(ST,d.settings);ST.v=2;saveST()}
+    LS.set('pendingClips',(d.tracks||[]).filter(t=>t.clips&&t.clips.length));
+    let n=0;for(const tr of S.tracks)if(await applyPending(tr))n++;
+    const left=LS.get('pendingClips',[]).length;
+    toast(n&&!left?`${n}曲分のクリップを戻しました`:left?`設定を戻しました。残り${left}曲分のクリップは、その曲を追加すると自動で戻ります`:'設定を戻しました',4000);
+    renderSettings();renderCamUI()}catch(e){toast('バックアップファイルを読み込めませんでした')}}
 
 /* ================= settings ================= */
 function renderSettings(){const B=$('#settingsBody');
@@ -1076,15 +1108,20 @@ function renderSettings(){const B=$('#settingsBody');
   ${row('撮影後すぐに確認','撮り直すか残すかをその場で選べます',tog('autoReview'))}
   ${row('連続撮影','止めるまで同じクリップで何テイクも続けて撮ります',tog('continuous'))}
   ${row('書き出し形式','HEVCはファイルが小さく、古い端末では再生できないことがあります',seg('codec',[['H.264','H.264'],['HEVC','HEVC']]))}
-  <h3 class="muted small" style="margin:22px 0 0;font-weight:500">このプロトタイプについて</h3>
+  <h3 class="muted small" style="margin:22px 0 0;font-weight:500">バックアップ</h3>
+  <div class="hint" style="margin-top:8px">ブラウザのデータが消えても、曲を入れ直すだけで切り取り範囲（クリップ）と設定が戻るように、バックアップファイルを保存しておけます。曲そのものと動画は含まれません。</div>
+  <div class="rv-btns"><button class="btn sec" style="flex:1" id="bkSave">バックアップを保存</button><button class="btn sec" style="flex:1" id="bkLoad">バックアップから戻す</button></div>
+  <input type="file" id="bkFile" accept=".json,application/json" hidden>
+  <h3 class="muted small" style="margin:22px 0 0;font-weight:500">このアプリについて</h3>
   <div class="hint" style="margin-top:8px">${EMBED?'この画面ではカメラが使えないため、CGのデモ映像で撮影を体験できます。音楽は実際に流れ、撮影した動画にも入ります。':'カメラが使える環境では実際のカメラで撮影します。'}<br><br>Android版との違いは画面右（パソコン）か、下のボタンで確認できます。</div>
   <button class="btn sec" style="width:100%;margin-top:10px" id="showNotes">Android版の仕様を見る</button>
   <button class="btn sec" style="width:100%;margin-top:8px;color:var(--rec)" id="wipe">保存したデータをすべて削除</button>
-  <p class="muted small" style="text-align:center;margin-top:16px">videomoon prototype 0.1</p>`;
+  <p class="muted small" style="text-align:center;margin-top:16px">videomoon 0.2</p>`;
   $$('#settingsBody .seg').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=s.dataset.k;let v=b.dataset.v;
     if(s.dataset.bool)v=v==='true';else if(!isNaN(parseFloat(v))&&k!=='res'&&k!=='codec'&&k!=='aspect')v=parseFloat(v);ST[k]=v;saveST();
     if(k==='aspect'){setCanvasSize();if(VS.mode==='real')tryRealCamera()}if(k==='fps'){VS.stream=null;if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter()}renderSettings();renderCamUI()}));
   $$('#settingsBody input[data-r]').forEach(r=>r.oninput=()=>{ST[r.dataset.r]=parseFloat(r.value);saveST();if(r.dataset.r==='syncMs')$('#syncV').textContent=(ST.syncMs>0?'+':'')+ST.syncMs+' ms'});
+  $('#bkSave').onclick=saveBackup;$('#bkLoad').onclick=()=>$('#bkFile').click();$('#bkFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)loadBackup(f)};
   $('#showNotes').onclick=()=>openSheet('<h3>Android版の仕様</h3>'+NOTES_ALL);
   $('#wipe').onclick=()=>{openSheet('<h3>すべて削除しますか？</h3><p>音源・クリップ・撮影したテイクがこのブラウザから消えます。元に戻せません。</p><div class="rv-btns"><button class="btn sec" style="flex:1" id="wN">やめる</button><button class="btn pri" style="background:var(--rec);color:#fff" id="wY">削除する</button></div>');
     $('#wN').onclick=closeSheet;$('#wY').onclick=async()=>{await DB.clear('tracks');await DB.clear('takes');S.tracks=[];S.takes=[];S.buffers.clear();S.peaks.clear();setActiveClip(null);updateLastThumb();closeSheet();toast('削除しました')}}}
@@ -1124,11 +1161,16 @@ function applyOrientation(){const l=isLand();app.classList.toggle('ls',l);$('#ro
 mqLand.addEventListener('change',applyOrientation);window.addEventListener('resize',applyOrientation);
 $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation();setTimeout(()=>{layoutGuides();if(S.tab==='trim')drawWave()},50)};
 
+/* ================= offline ================= */
+// 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
+if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
+  window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{})})}
+
 /* ================= boot ================= */
 (async()=>{setInterval(()=>{const d=new Date();$('#sbTime').textContent=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')},10000);
   applyOrientation();setCanvasSize();await DB.open();await loadTracks();await loadTakes();renderCamUI();showScreen('camera');
   const real=await tryRealCamera();if(real)toast('カメラを使って撮影できます');
-  if(!LS.get('welcomed',false)){openSheet(`<h3>videomoon へようこそ</h3><p>好きな曲の好きな部分を流しながら、なめらかな60fpsで撮影できる動画カメラです。動画に入るのは流した音楽だけ。周りの雑音は入りません。</p>
+  if(!LS.get('welcomed',false)){openSheet(`<h3>videomoon へようこそ</h3><p>好きな曲の好きな部分を流しながら、なめらかな60fpsで撮影できる動画カメラです。動画に入るのは流した音楽だけ。周りの雑音は入りません。</p><p class="muted small">撮った動画はこのブラウザに一時保存されます。残したいものは「写真アプリに保存」してください。</p>
    ${real?'':'<p class="muted small">このプレビューではカメラが使えないため、CGのデモ映像で撮影を体験できます。音楽は実際に流れて、撮った動画にも入ります。</p>'}
    <div class="rv-btns"><button class="btn sec" id="wClose">あとで</button><button class="btn pri" id="wSample">サンプル曲で撮ってみる</button></div>`);
    $('#wClose').onclick=()=>{LS.set('welcomed',true);closeSheet()};
