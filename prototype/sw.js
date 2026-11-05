@@ -1,7 +1,7 @@
 // 乙打ちカメラ オフライン対応
 // - 画面（HTML）：電波があれば最新版、弱い・ないときは端末に保存した版で起動
 // - アイコン・フォントなど：端末の保存分を即使い、裏で更新
-const CACHE = 'otsuuchicam-v1';
+const CACHE = 'otsuuchicam-v2';
 const CORE = ['./', './index.html', './icon.png', './icon-512.png', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
