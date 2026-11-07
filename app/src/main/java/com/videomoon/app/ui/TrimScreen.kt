@@ -40,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -87,6 +88,9 @@ fun TrimScreen(vm: MainViewModel, trackId: String, onBack: () -> Unit, onShoot: 
     var v0 by remember { mutableLongStateOf(0L) }
     var v1 by remember { mutableLongStateOf(dur) }
     var playhead by remember { mutableLongStateOf(-1L) }
+    // 再生位置（波形をタップした場所）。再生とループはここから
+    var cue by remember(trackId) { mutableLongStateOf(clip.startMs) }
+    var restart by remember { mutableIntStateOf(0) }
     var playing by remember { mutableStateOf(false) }
     var loop by remember { mutableStateOf(true) }
     var speed by remember { mutableFloatStateOf(1f) }
@@ -99,16 +103,17 @@ fun TrimScreen(vm: MainViewModel, trackId: String, onBack: () -> Unit, onShoot: 
     }
     DisposableEffect(trackId) { onDispose { player.release() } }
     LaunchedEffect(speed) { player.playbackParameters = PlaybackParameters(speed) }
-    LaunchedEffect(playing) {
+    LaunchedEffect(playing, restart) {
         if (!playing) { player.pause(); return@LaunchedEffect }
-        val from = clip.startMs - clip.prerollMs.coerceAtMost(clip.startMs)
-        if (playhead !in from until clip.endMs) player.seekTo(from) else player.seekTo(playhead)
+        val start = cue.coerceAtLeast(0)
+        val end = if (start < clip.endMs) clip.endMs else track.durationMs
+        player.seekTo(start)
         player.play()
         while (true) {
             delay(30)
             playhead = player.currentPosition
-            if (playhead >= clip.endMs) {
-                if (loop) player.seekTo(clip.startMs) else { playing = false; playhead = -1 }
+            if (playhead >= end) {
+                if (loop) player.seekTo(start) else { playing = false; playhead = -1 }
             }
         }
     }
@@ -165,8 +170,8 @@ fun TrimScreen(vm: MainViewModel, trackId: String, onBack: () -> Unit, onShoot: 
                     }
                     .pointerInput(v0, v1) {
                         detectTapGestures { o ->
-                            playhead = v0 + ((o.x / size.width) * (v1 - v0)).toLong()
-                            if (playing) player.seekTo(playhead)
+                            cue = (v0 + ((o.x / size.width) * (v1 - v0)).toLong()).coerceIn(0, dur)
+                            if (playing) restart++ // 新しい位置から再生し直す
                         }
                     }
             ) {
@@ -198,6 +203,7 @@ fun TrimScreen(vm: MainViewModel, trackId: String, onBack: () -> Unit, onShoot: 
                         drawRect(VM.Moon, Offset(hx - 1f, 0f), Size(2f, size.height))
                         drawRoundRect(VM.Moon, Offset(if (right) hx - 30f else hx, size.height - 54f), Size(30f, 46f), CornerRadius(8f))
                     }
+                    drawRect(VM.Tx.copy(alpha = .85f), Offset(x(cue) - 1f, 0f), Size(1.5f, size.height))
                     if (playhead >= 0) drawRect(VM.Rec, Offset(x(playhead) - 1f, 0f), Size(2f, size.height))
                 }
             }
@@ -236,12 +242,12 @@ fun TrimScreen(vm: MainViewModel, trackId: String, onBack: () -> Unit, onShoot: 
                 ) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "区間を再生", tint = VM.Ink) }
                 SmallToggle("ループ", loop, Icons.Rounded.Repeat) { loop = !loop }
                 SmallToggle("ここで開始", false) {
-                    if (playhead >= 0) update(clip.copy(startMs = playhead.coerceAtMost(clip.endMs - 500)))
-                    else vm.messages.tryEmit("再生中か、波形をタップした位置で使えます")
+                    val at = if (playhead >= 0) playhead else cue
+                    update(clip.copy(startMs = at.coerceAtMost(clip.endMs - 500)))
                 }
                 SmallToggle("ここで終了", false) {
-                    if (playhead >= 0) update(clip.copy(endMs = playhead.coerceAtLeast(clip.startMs + 500)))
-                    else vm.messages.tryEmit("再生中か、波形をタップした位置で使えます")
+                    val at = if (playhead >= 0) playhead else cue
+                    update(clip.copy(endMs = at.coerceAtLeast(clip.startMs + 500)))
                 }
             }
             Spacer(Modifier.height(10.dp))
@@ -261,7 +267,7 @@ fun TrimScreen(vm: MainViewModel, trackId: String, onBack: () -> Unit, onShoot: 
                 Row(
                     Modifier.padding(bottom = 6.dp).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(VM.S1)
                         .then(if (c.id == clip.id) Modifier.border(1.5.dp, VM.Moon.copy(alpha = .5f), RoundedCornerShape(12.dp)) else Modifier)
-                        .clickable { clip = c; v0 = 0; v1 = dur }.padding(horizontal = 12.dp, vertical = 10.dp),
+                        .clickable { clip = c; cue = c.startMs; v0 = 0; v1 = dur }.padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {

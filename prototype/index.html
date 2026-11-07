@@ -192,6 +192,14 @@ svg{display:block}
 .trim-name{font-size:19px;font-weight:700;margin:6px 0 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #waveWrap{position:relative;height:150px;border-radius:12px;background:var(--s1);margin:14px 0 6px;touch-action:none;overflow:hidden}
 #waveCv{position:absolute;inset:0;width:100%;height:100%}
+#cueWrap{position:relative;height:30px;margin-top:4px;touch-action:none;cursor:pointer}
+#cueTrack{position:absolute;left:0;right:0;top:13px;height:4px;border-radius:2px;background:var(--s3)}
+#cueSel{position:absolute;top:13px;height:4px;border-radius:2px;background:rgba(255,138,0,.55)}
+#cueNow{position:absolute;top:7px;width:2px;height:16px;margin-left:-1px;background:var(--rec);display:none}
+#cueKnob{position:absolute;top:3px;width:24px;height:24px;margin-left:-12px;border-radius:50%;background:var(--tx);box-shadow:0 1px 6px rgba(0,0,0,.6);border:3px solid var(--moon)}
+.cueRow{display:flex;align-items:center;gap:6px;margin-top:2px}
+.cueLab{font-size:12.5px;color:var(--mu);white-space:nowrap}.cueLab b{color:var(--tx);font-size:15px}
+.cueRow .tbtn{height:32px;font-size:12px;padding:0 9px}
 .zoomRow{display:flex;justify-content:space-between;align-items:center;font-family:var(--num);font-size:12px;color:var(--dim)}
 .zoomRow button{font-family:'Zen Kaku Gothic New';font-size:12px;color:var(--moon);padding:4px 2px}
 .io{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;margin:14px 0 4px}
@@ -435,6 +443,9 @@ svg{display:block}
         <div class="trim-name" id="trimName">—</div>
         <div class="muted small num" id="trimInfo"></div>
         <div id="waveWrap"><canvas id="waveCv"></canvas></div>
+        <div id="cueWrap" aria-label="再生位置"><div id="cueTrack"></div><div id="cueSel"></div><div id="cueNow"></div><div id="cueKnob"></div></div>
+        <div class="cueRow"><span class="cueLab">再生位置 <b class="num" id="cueT">0:00.0</b></span><span class="spacer"></span><button class="tbtn" id="chkIn">▶ 開始付近</button><button class="tbtn" id="chkOut">▶ 終了付近</button></div>
+        <p class="muted small" style="margin:6px 0 0">波形か下のバーをタップすると、そこから再生します。範囲の中をドラッグすると範囲ごと動きます。</p>
         <div class="zoomRow"><span id="viewL">0:00</span><button id="zoomBtn">選択範囲を拡大</button><span id="viewR">0:00</span></div>
         <div class="io">
           <span class="lab">開始</span>
@@ -626,18 +637,18 @@ function renderTracks(){const L=$('#trackList');L.innerHTML='';
     if(S.peaks.has(tr.id))requestAnimationFrame(draw);else ensureBuffer(tr).then(draw).catch(()=>{})}}
 
 /* ================= trim editor ================= */
-const T={tr:null,clip:null,v0:0,v1:1,playing:null,loop:true,speed:1,playhead:-1};
+const T={tr:null,clip:null,v0:0,v1:1,playing:null,loop:true,speed:1,playhead:-1,cue:0};
 async function openTrim(id){const tr=S.tracks.find(t=>t.id===id);if(!tr)return;busy(true,'波形を準備中…');
   try{await ensureBuffer(tr)}catch(e){busy(false);toast('音源を読み込めませんでした');return}busy(false);
   T.tr=tr;const dur=tr.duration;const base=tr.clips[0];
   T.clip=base?{...base}:{id:null,name:'',start:Math.min(dur*.25,dur-5),end:Math.min(dur,dur*.25+30),fadeIn:0,fadeOut:0,preroll:0};
   if(S.activeClip&&S.activeClip.trackId===id){const c=tr.clips.find(c=>c.id===S.activeClip.clipId);if(c)T.clip={...c}}
-  T.v0=0;T.v1=dur;showScreen('trim');$('#trimName').textContent=tr.name;
+  T.v0=0;T.v1=dur;T.cue=T.clip.start;showScreen('trim');$('#trimName').textContent=tr.name;
   $('#trimInfo').textContent=`長さ ${fmtS(dur)}`+(tr.bpm?` ・ ${tr.bpm} BPM`:'');syncTrimUI()}
 function syncTrimUI(){const c=T.clip;$('#inT').textContent=fmt(c.start);$('#outT').textContent=fmt(c.end);$('#lenT').textContent=(c.end-c.start).toFixed(1)+' 秒';
   setSeg('#segFin',c.fadeIn);setSeg('#segFout',c.fadeOut);setSeg('#segPre',c.preroll);setSeg('#segSpeed',T.speed);
   $('#viewL').textContent=fmt(T.v0);$('#viewR').textContent=fmt(T.v1);$('#zoomBtn').textContent=(T.v1-T.v0)<T.tr.duration-.01?'全体を表示':'選択範囲を拡大';
-  drawWave();renderClipItems()}
+  drawWave();updateCue();renderClipItems()}
 function setSeg(sel,v){$$(sel+' button').forEach(b=>b.classList.toggle('on',parseFloat(b.dataset.v)===parseFloat(v)))}
 function drawWave(){const cv=$('#waveCv'),d=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;if(!w||!T.tr)return;cv.width=w*d;cv.height=h*d;const c=cv.getContext('2d');c.scale(d,d);
   const p=S.peaks.get(T.tr.id),dur=T.tr.duration,X=t=>(t-T.v0)/(T.v1-T.v0)*w,cl=T.clip;
@@ -656,24 +667,38 @@ function drawWave(){const cv=$('#waveCv'),d=devicePixelRatio||1,w=cv.clientWidth
   for(const [t,side] of [[cl.start,0],[cl.end,1]]){const x=X(t);if(x<-20||x>w+20)continue;c.fillStyle='#ff8a00';c.fillRect(x-1,0,2,h);
     c.beginPath();const y=h-14;c.roundRect?c.roundRect(side?x-16:x,y-12,16,26,5):c.rect(side?x-16:x,y-12,16,26);c.fill();
     c.fillStyle='#1a0e00';c.fillRect(side?x-10:x+5,y-5,1.5,12);c.fillRect(side?x-6:x+9,y-5,1.5,12)}
+  {const x=X(T.cue);if(x>=-2&&x<=w+2){c.fillStyle='rgba(242,240,235,.85)';c.fillRect(x-.75,0,1.5,h);c.beginPath();c.moveTo(x-6,0);c.lineTo(x+6,0);c.lineTo(x,8);c.closePath();c.fill()}}
   if(T.playhead>=0){const x=X(T.playhead);c.fillStyle='#ff5a4e';c.fillRect(x-1,0,2,h)}
   // ruler ticks
   c.fillStyle='#5d5c6a';c.font='11px "Barlow Semi Condensed"';const span=T.v1-T.v0,step=[1,2,5,10,15,30,60].find(s=>span/s<7)||60;
   for(let t=Math.ceil(T.v0/step)*step;t<T.v1;t+=step){const x=X(t);c.fillRect(x,0,1,5);c.fillText(fmtS(t),x+3,12)}
 }
-// drag handles
-(()=>{const wrap=$('#waveWrap');let drag=null;
+// 波形：両端をドラッグ＝範囲調整、範囲内をドラッグ＝範囲ごと移動、タップ＝再生位置
+function setCue(t,restart=true){T.cue=clamp(t,0,T.tr.duration);drawWave();updateCue();if(restart&&T.playing){stopTrim();playTrim({mode:'cue'})}}
+function updateCue(){if(!T.tr)return;const span=T.v1-T.v0,P=t=>((t-T.v0)/span*100);
+  const k=$('#cueKnob');k.style.left=clamp(P(T.cue),0,100)+'%';k.style.opacity=(T.cue<T.v0||T.cue>T.v1)?.35:1;
+  const a=clamp(P(T.clip.start),0,100),b=clamp(P(T.clip.end),0,100);$('#cueSel').style.left=a+'%';$('#cueSel').style.width=Math.max(0,b-a)+'%';
+  const n=$('#cueNow');if(T.playhead>=0){n.style.display='block';n.style.left=clamp(P(T.playhead),0,100)+'%'}else n.style.display='none';
+  $('#cueT').textContent=fmt(T.cue)}
+(()=>{const wrap=$('#waveWrap');let drag=null,drag0=null,downX=0,moved=false;
   const tAt=e=>{const r=wrap.getBoundingClientRect();return T.v0+(e.clientX-r.left)/r.width*(T.v1-T.v0)};
   wrap.addEventListener('pointerdown',e=>{if(!T.tr)return;const t=tAt(e),r=wrap.getBoundingClientRect(),pxs=(T.v1-T.v0)/r.width;
-    const ds=Math.abs(t-T.clip.start)/pxs,de=Math.abs(t-T.clip.end)/pxs;
-    if(Math.min(ds,de)<26){drag=ds<de?'s':'e'}else if(t>T.clip.start&&t<T.clip.end){drag='m';drag0={t,s:T.clip.start,e:T.clip.end}}else{drag=null;T.playhead=t;drawWave();if(T.playing){stopTrim();playTrim(t)}return}
+    const ds=Math.abs(t-T.clip.start)/pxs,de=Math.abs(t-T.clip.end)/pxs;downX=e.clientX;moved=false;
+    if(Math.min(ds,de)<26)drag=ds<de?'s':'e';else if(t>T.clip.start&&t<T.clip.end){drag='m';drag0={t,s:T.clip.start,e:T.clip.end}}else drag='tap';
     wrap.setPointerCapture(e.pointerId)});
-  let drag0=null;
-  wrap.addEventListener('pointermove',e=>{if(!drag)return;const t=clamp(tAt(e),0,T.tr.duration),c=T.clip;
+  wrap.addEventListener('pointermove',e=>{if(!drag)return;if(Math.abs(e.clientX-downX)>6)moved=true;if(!moved||drag==='tap')return;
+    const t=clamp(tAt(e),0,T.tr.duration),c=T.clip;
     if(drag==='s')c.start=clamp(t,0,c.end-.5);else if(drag==='e')c.end=clamp(t,c.start+.5,T.tr.duration);
     else{const len=drag0.e-drag0.s;let ns=clamp(drag0.s+(t-drag0.t),0,T.tr.duration-len);c.start=ns;c.end=ns+len}
     c.preroll=Math.min(c.preroll,c.start);syncTrimUI()});
-  const up=()=>{drag=null};wrap.addEventListener('pointerup',up);wrap.addEventListener('pointercancel',up);
+  const up=e=>{if(drag&&!moved&&drag!=='s'&&drag!=='e')setCue(tAt(e));drag=null};
+  wrap.addEventListener('pointerup',up);wrap.addEventListener('pointercancel',()=>{drag=null});
+  // 再生位置バー：ドラッグで位置を決め、離すとそこから再生（再生中のみ）
+  const cw=$('#cueWrap');let cdrag=false;const ct=e=>{const r=cw.getBoundingClientRect();return T.v0+clamp((e.clientX-r.left)/r.width,0,1)*(T.v1-T.v0)};
+  cw.addEventListener('pointerdown',e=>{if(!T.tr)return;cdrag=true;cw.setPointerCapture(e.pointerId);setCue(ct(e),false)});
+  cw.addEventListener('pointermove',e=>{if(cdrag)setCue(ct(e),false)});
+  cw.addEventListener('pointerup',e=>{if(!cdrag)return;cdrag=false;setCue(ct(e),true)});
+  cw.addEventListener('pointercancel',()=>{cdrag=false});
 })();
 $$('.nudge button').forEach(b=>b.onclick=()=>{const [k,v]=b.dataset.n.split(','),c=T.clip,d=parseFloat(v);
   if(k==='s')c.start=clamp(+(c.start+d).toFixed(2),0,c.end-.5);else c.end=clamp(+(c.end+d).toFixed(2),c.start+.5,T.tr.duration);syncTrimUI()});
@@ -681,25 +706,34 @@ $('#zoomBtn').onclick=()=>{if((T.v1-T.v0)<T.tr.duration-.01){T.v0=0;T.v1=T.tr.du
 function segHandler(sel,fn){$$(sel+' button').forEach(b=>b.onclick=()=>{fn(parseFloat(b.dataset.v));syncTrimUI()})}
 segHandler('#segFin',v=>T.clip.fadeIn=v);segHandler('#segFout',v=>T.clip.fadeOut=v);
 segHandler('#segPre',v=>{T.clip.preroll=Math.min(v,T.clip.start);if(v>T.clip.start)toast('曲の頭に近いので、プリロールは'+T.clip.start.toFixed(1)+'秒までです')});
-segHandler('#segSpeed',v=>{T.speed=v;if(T.playing){const p=T.playhead;stopTrim();playTrim(p)}});
+segHandler('#segSpeed',v=>{T.speed=v;if(T.playing){const o=T.playing.opts;stopTrim();playTrim(o)}});
 $('#trimLoop').onclick=()=>{T.loop=!T.loop;$('#trimLoop').classList.toggle('on',T.loop)};
-function playTrim(from){const ctx=ac(),buf=S.buffers.get(T.tr.id),c=T.clip;let st=(from!=null&&from>=c.start-c.preroll&&from<c.end)?from:c.start;
-  const src=ctx.createBufferSource();src.buffer=buf;src.playbackRate.value=T.speed;const g=ctx.createGain();src.connect(g).connect(ctx.destination);
-  const now=ctx.currentTime+.03;src.start(now,st,(c.end-st));
-  const o={src,startAt:now,from:st};T.playing=o;
-  src.onended=()=>{if(T.playing!==o)return;T.playing=null;if(T.loop&&S.tab==='trim')playTrim(c.start);else{T.playhead=-1;setPlayIcon(false);drawWave()}};
-  setPlayIcon(true);const tick=()=>{if(T.playing!==o)return;T.playhead=o.from+(ctx.currentTime-o.startAt)*T.speed;drawWave();requestAnimationFrame(tick)};tick()}
+/** 区間の試聴。mode: 'cue'＝再生位置から終了まで / 'in'＝開始付近 / 'out'＝終了付近。ループ中は同じ区間を繰り返す */
+function trimWindow(mode){const c=T.clip,dur=T.tr.duration;
+  if(mode==='in')return [Math.max(0,c.start-1.5),Math.min(c.end,c.start+3)];
+  if(mode==='out')return [Math.max(c.start,c.end-3),c.end];
+  const from=T.cue;return from<c.end?[from,c.end]:[from,dur]}
+function playTrim(opts={mode:'cue'}){const ctx=ac(),buf=S.buffers.get(T.tr.id);let [st,to]=trimWindow(opts.mode);
+  if(to-st<.05){st=T.clip.start;to=T.clip.end}
+  const src=ctx.createBufferSource();src.buffer=buf;src.playbackRate.value=T.speed;src.connect(ctx.destination);
+  const now=ctx.currentTime+.03;src.start(now,st,to-st);
+  const o={src,startAt:now,from:st,opts};T.playing=o;
+  src.onended=()=>{if(T.playing!==o)return;T.playing=null;if(T.loop&&S.tab==='trim')playTrim(opts);else{T.playhead=-1;setPlayIcon(false);drawWave();updateCue()}};
+  setPlayIcon(true);const tick=()=>{if(T.playing!==o)return;T.playhead=o.from+(ctx.currentTime-o.startAt)*T.speed;drawWave();updateCue();requestAnimationFrame(tick)};tick()}
 function stopTrim(){if(T.playing){const p=T.playing;T.playing=null;try{p.src.stop()}catch(e){}}setPlayIcon(false)}
 function setPlayIcon(on){$('#trimPlay').innerHTML=on?'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg>'}
-$('#trimPlay').onclick=()=>{if(T.playing){stopTrim();drawWave()}else playTrim(T.playhead>=0?T.playhead:null)};
-$('#setInHere').onclick=()=>{if(T.playhead<0)return toast('再生中か、波形をタップした位置で使えます');T.clip.start=clamp(T.playhead,0,T.clip.end-.5);syncTrimUI()};
-$('#setOutHere').onclick=()=>{if(T.playhead<0)return toast('再生中か、波形をタップした位置で使えます');T.clip.end=clamp(T.playhead,T.clip.start+.5,T.tr.duration);syncTrimUI()};
+$('#trimPlay').onclick=()=>{if(T.playing){stopTrim();T.playhead=-1;drawWave();updateCue()}else playTrim({mode:'cue'})};
+$('#chkIn').onclick=()=>{stopTrim();playTrim({mode:'in'})};
+$('#chkOut').onclick=()=>{stopTrim();playTrim({mode:'out'})};
+const herePos=()=>T.playhead>=0?T.playhead:T.cue;
+$('#setInHere').onclick=()=>{T.clip.start=clamp(herePos(),0,T.clip.end-.5);T.clip.preroll=Math.min(T.clip.preroll,T.clip.start);syncTrimUI()};
+$('#setOutHere').onclick=()=>{T.clip.end=clamp(herePos(),T.clip.start+.5,T.tr.duration);syncTrimUI()};
 $('#trimBack').onclick=()=>{stopTrim();T.playhead=-1;showScreen('tracks')};
 function renderClipItems(){const L=$('#clipItems');L.innerHTML='';const tr=T.tr;
   if(!tr.clips.length){L.innerHTML='<div class="muted small">まだありません。範囲を決めて「クリップを保存」を押してください。</div>';return}
   tr.clips.forEach(cl=>{const d=document.createElement('div');d.className='clipItem'+(cl.id===T.clip.id?' cur':'');
     d.innerHTML=`<div class="cn"><b></b><span>${fmt(cl.start)} – ${fmt(cl.end)}（${(cl.end-cl.start).toFixed(1)}秒）</span></div><button aria-label="削除"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>`;
-    d.querySelector('b').textContent=cl.name;d.querySelector('.cn').onclick=()=>{T.clip={...cl};T.v0=0;T.v1=tr.duration;syncTrimUI()};
+    d.querySelector('b').textContent=cl.name;d.querySelector('.cn').onclick=()=>{T.clip={...cl};T.v0=0;T.v1=tr.duration;T.cue=cl.start;syncTrimUI()};
     d.querySelector('button').onclick=async()=>{tr.clips=tr.clips.filter(x=>x.id!==cl.id);if(T.clip.id===cl.id)T.clip.id=null;await DB.put('tracks',tr);syncTrimUI()};L.appendChild(d)})}
 async function saveClip(nameOverride){const tr=T.tr,c=T.clip;
   if(c.id&&tr.clips.some(x=>x.id===c.id)){const i=tr.clips.findIndex(x=>x.id===c.id);tr.clips[i]={...c}}
@@ -925,6 +959,59 @@ $('#chipFull').onclick=toggleFs;
 $('#flipBtn').onclick=()=>{ST.facing=ST.facing==='back'?'front':'back';saveST();if(VS.mode==='real')tryRealCamera();renderCamUI();toast(ST.facing==='front'?'前面カメラ':'背面カメラ')};
 $('#lastThumb').onclick=()=>showScreen('library');
 
+/**
+ * MediaRecorder（特にiPhoneのSafari）が書き出す「細切れ形式のMP4」は、
+ * 長さの欄が「不明（最大値）」のままなので、写真アプリで1,988時間などと表示される。
+ * 実際のフレームの長さを合計して、ヘッダー（mvhd / tkhd / mdhd / mehd）に正しい長さを書き込む。
+ */
+async function fixMp4Duration(blob,fallbackSec){
+  if(!blob||!/mp4/i.test(blob.type||''))return blob;
+  let buf;try{buf=new Uint8Array(await blob.arrayBuffer())}catch(e){return blob}
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+  const typ=o=>String.fromCharCode(buf[o+4],buf[o+5],buf[o+6],buf[o+7]);
+  const each=(start,end,cb)=>{let o=start;while(o+8<=end){let size=dv.getUint32(o),hdr=8;
+      if(size===1){size=Number(dv.getBigUint64(o+8));hdr=16}else if(size===0)size=end-o;
+      if(size<hdr||o+size>end)break;cb(o,size,typ(o),hdr);o+=size}};
+  const u64=(o)=>Number(dv.getBigUint64(o));
+  try{
+    let moov=null;const moofs=[];
+    each(0,buf.length,(o,sz,t,h)=>{if(t==='moov')moov={o,sz,h};else if(t==='moof')moofs.push({o,sz,h})});
+    if(!moov)return blob;
+    let mvhd=-1,mehd=-1;const tracks={},trexDur={};
+    each(moov.o+moov.h,moov.o+moov.sz,(o,sz,t,h)=>{
+      if(t==='mvhd')mvhd=o;
+      else if(t==='mvex')each(o+h,o+sz,(o2,sz2,t2)=>{if(t2==='mehd')mehd=o2;if(t2==='trex')trexDur[dv.getUint32(o2+12)]=dv.getUint32(o2+20)});
+      else if(t==='trak'){const tk={tkhd:-1,mdhd:-1,sum:0};
+        each(o+h,o+sz,(o2,sz2,t2,h2)=>{if(t2==='tkhd')tk.tkhd=o2;if(t2==='mdia')each(o2+h2,o2+sz2,(o3,sz3,t3)=>{if(t3==='mdhd')tk.mdhd=o3})});
+        if(tk.tkhd<0||tk.mdhd<0)return;
+        tk.id=dv.getUint32(tk.tkhd+(buf[tk.tkhd+8]===1?28:20));
+        tk.ts=dv.getUint32(tk.mdhd+(buf[tk.mdhd+8]===1?28:20));
+        tracks[tk.id]=tk}});
+    if(mvhd<0)return blob;
+    const mv1=buf[mvhd+8]===1,mvTs=dv.getUint32(mvhd+(mv1?28:20));
+    // 断片（moof）ごとのサンプルの長さを合計
+    for(const m of moofs)each(m.o+m.h,m.o+m.sz,(o,sz,t,h)=>{if(t!=='traf')return;let id=null,def=null;
+      each(o+h,o+sz,(o2,sz2,t2)=>{
+        if(t2==='tfhd'){const fl=dv.getUint32(o2+8)&0xffffff;id=dv.getUint32(o2+12);let p=o2+16;
+          if(fl&1)p+=8;if(fl&2)p+=4;if(fl&8)def=dv.getUint32(p)}
+        else if(t2==='trun'&&id!=null&&tracks[id]){const fl=dv.getUint32(o2+8)&0xffffff,n=dv.getUint32(o2+12);let p=o2+16;
+          if(fl&1)p+=4;if(fl&4)p+=4;const per=((fl&0x100)?4:0)+((fl&0x200)?4:0)+((fl&0x400)?4:0)+((fl&0x800)?4:0);
+          if(fl&0x100){for(let i=0;i<n;i++)tracks[id].sum+=dv.getUint32(p+i*per)}
+          else tracks[id].sum+=n*(def??trexDur[id]??0)}})});
+    let movieSec=0;for(const id in tracks){const tk=tracks[id];tk.sec=tk.sum>0&&tk.ts?tk.sum/tk.ts:0;movieSec=Math.max(movieSec,tk.sec)}
+    if(!moofs.length){ // 普通のMP4：長さが不明（最大値/0）のときだけ直す
+      const cur=mv1?u64(mvhd+32):dv.getUint32(mvhd+24);if(cur!==0xFFFFFFFF&&cur!==0)return blob}
+    if(!(movieSec>0))movieSec=fallbackSec||0;if(!(movieSec>0))return blob;
+    const put=(o,is64,v)=>{v=Math.max(0,Math.round(v));if(is64)dv.setBigUint64(o,BigInt(v));else dv.setUint32(o,Math.min(v,0xFFFFFFFE))};
+    put(mvhd+(mv1?32:24),mv1,movieSec*mvTs);
+    for(const id in tracks){const tk=tracks[id],sec=tk.sec||movieSec;
+      const t1=buf[tk.tkhd+8]===1;put(tk.tkhd+(t1?36:28),t1,sec*mvTs);
+      const d1=buf[tk.mdhd+8]===1;put(tk.mdhd+(d1?32:24),d1,sec*tk.ts)}
+    if(mehd>=0){const e1=buf[mehd+8]===1;put(mehd+12,e1,movieSec*mvTs)}
+    return new Blob([buf],{type:blob.type});
+  }catch(e){return blob}
+}
+
 /* ================= recording ================= */
 function pickMime(){const c=['video/mp4;codecs=avc1.42E01F,mp4a.40.2','video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
   for(const m of c){try{if(MediaRecorder.isTypeSupported(m))return m}catch(e){}}return ''}
@@ -967,7 +1054,8 @@ function stopRec(why){const r=S.rec;if(!r)return;clearTimeout(r.endTimer);r.dur=
   if(r.started&&r.mr.state!=='inactive')r.mr.stop();else finishRec(r)}
 async function finishRec(r){S.rec=null;setCanvasSize();layoutGuides();app.classList.remove('recording');$('#tabbar').classList.remove('hide');drawMoon(0);$('#tcText').textContent='00:00:00';
   if(!r.started||!r.chunks.length||r.dur<.3){toast('録画が短すぎるため保存しませんでした');return}
-  const blob=new Blob(r.chunks,{type:(r.mime||'video/webm').split(';')[0]});
+  let blob=new Blob(r.chunks,{type:(r.mime||'video/webm').split(';')[0]});
+  blob=await fixMp4Duration(blob,r.dur); // iPhoneで長さが「1,988時間」などになるのを防ぐ
   const a=r.clip;const n=S.takes.filter(t=>t.kind==='video'&&a&&t.clipId===a.c.id).length+1;
   const take={id:uid(),kind:'video',blob,mime:blob.type,thumb:r.thumb||grabThumb(),created:Date.now(),dur:r.dur,fps:r.fps,res:ST.res,aspect:r.aspect,
     title:a?`${a.c.name} ・ テイク ${n}`:'動画',trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:VS.mode==='demo'?ST.scene:null};
