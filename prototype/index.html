@@ -553,7 +553,7 @@ const LS={get(k,d){try{const v=localStorage.getItem('vm_'+k);return v?JSON.parse
 
 /* ================= state ================= */
 const ST=Object.assign({fps:60,res:'1080',aspect:'auto',stab:true,flicker:50,countdown:3,grid:true,zebra:false,zebraLv:95,peaking:false,histo:true,
-  mirrorPreview:true,mirrorSave:false,lens:'wide',blur:0,monitorVol:0.9,syncMs:0,autoReview:true,continuous:false,codec:'H.264',scene:'stage',facing:'back'},LS.get('settings',{}));
+  mirrorPreview:true,mirrorSave:false,lens:'wide',blur:0,acRate:0,monitorVol:0.9,syncMs:0,autoReview:true,continuous:false,codec:'H.264',scene:'stage',facing:'back'},LS.get('settings',{}));
 const PRO={ae:true,iso:1600,shut:120,awb:true,wb:5600,ev:0,af:true,focus:0.7};
 const S={tab:'camera',mode:'video',tracks:[],takes:[],activeClip:LS.get('activeClip',null),buffers:new Map(),peaks:new Map(),
   rec:null,counting:false,libFilter:'all',selecting:false,picked:new Set()};
@@ -570,7 +570,7 @@ let AC=null;
 // iPhoneのSafari：音を「音楽再生」として扱わせる。カメラ使用中でも画面収録に音が入り、マナーモードでも鳴るようにする
 function setPlaybackSession(){try{if(navigator.audioSession&&navigator.audioSession.type!=='playback')navigator.audioSession.type='playback'}catch(e){}}
 setPlaybackSession();
-function ac(){setPlaybackSession();if(!AC){const C=window.AudioContext||window.webkitAudioContext;AC=new C({latencyHint:'interactive'})}if(AC.state==='suspended')AC.resume();return AC}
+function ac(){setPlaybackSession();if(!AC){const C=window.AudioContext||window.webkitAudioContext;const o={latencyHint:'interactive'};if(ST.acRate)o.sampleRate=ST.acRate;try{AC=new C(o)}catch(e){AC=new C({latencyHint:'interactive'})}}if(AC.state==='suspended')AC.resume();return AC}
 document.addEventListener('pointerdown',()=>{if(AC&&AC.state==='suspended')AC.resume()},{passive:true});
 /**
  * iPhoneのSafariでは、画面収録やイヤホンの抜き差しなどで端末の音声設定（サンプルレート）が途中で変わると、
@@ -1057,7 +1057,10 @@ async function fixMp4Duration(blob,fallbackSec){MP4INFO='';
       if(t==='mvhd')mvhd=o;
       else if(t==='mvex')each(o+h,o+sz,(o2,sz2,t2)=>{if(t2==='mehd')mehd=o2;if(t2==='trex')trexDur[dv.getUint32(o2+12)]=dv.getUint32(o2+20)});
       else if(t==='trak'){const tk={tkhd:-1,mdhd:-1,elst:-1,sum:0};
-        each(o+h,o+sz,(o2,sz2,t2,h2)=>{if(t2==='tkhd')tk.tkhd=o2;if(t2==='mdia')each(o2+h2,o2+sz2,(o3,sz3,t3)=>{if(t3==='mdhd')tk.mdhd=o3});
+        each(o+h,o+sz,(o2,sz2,t2,h2)=>{if(t2==='tkhd')tk.tkhd=o2;if(t2==='mdia')each(o2+h2,o2+sz2,(o3,sz3,t3,h3)=>{if(t3==='mdhd')tk.mdhd=o3;
+            if(t3==='hdlr')tk.kind=String.fromCharCode(buf[o3+16],buf[o3+17],buf[o3+18],buf[o3+19]);
+            if(t3==='minf')each(o3+h3,o3+sz3,(o4,sz4,t4,h4)=>{if(t4==='stbl')each(o4+h4,o4+sz4,(o5,sz5,t5)=>{if(t5==='stsd'){const e=o5+16;
+              tk.codec=String.fromCharCode(buf[e+4],buf[e+5],buf[e+6],buf[e+7]);if(tk.kind==='soun')tk.rate=dv.getUint32(e+32)>>>16}})})});
           if(t2==='edts')each(o2+h2,o2+sz2,(o3,sz3,t3)=>{if(t3==='elst')tk.elst=o3})});
         if(tk.tkhd<0||tk.mdhd<0)return;
         tk.id=dv.getUint32(tk.tkhd+(buf[tk.tkhd+8]===1?28:20));
@@ -1076,7 +1079,7 @@ async function fixMp4Duration(blob,fallbackSec){MP4INFO='';
           else tracks[id].sum+=n*(def??trexDur[id]??0)}})});
     let movieSec=0;for(const id in tracks){const tk=tracks[id];tk.sec=tk.sum>0&&tk.ts?tk.sum/tk.ts:0;movieSec=Math.max(movieSec,tk.sec)}
     // 計算した長さが実際の録画時間と大きく違うときは、録画時間を正とする
-    const trackInfo=Object.values(tracks).map(t=>t.sec.toFixed(1)).join('/');let usedWall=false;
+    const trackInfo=Object.values(tracks).map(t=>`${t.kind==='soun'?'音声':t.kind==='vide'?'映像':'?'}${t.sec.toFixed(1)}s(${t.codec||'?'}${t.rate?' '+t.rate+'Hz':''} ts${t.ts})`).join(' / ');let usedWall=false;
     if(fallbackSec>0&&(!(movieSec>0)||Math.abs(movieSec-fallbackSec)/fallbackSec>.08)){movieSec=fallbackSec;usedWall=true;for(const id in tracks)tracks[id].sec=fallbackSec}
     if(!moofs.length){ // 普通のMP4：長さが不明（最大値/0）のときだけ直す
       const cur=mv1?u64(mvhd+32):dv.getUint32(mvhd+24);if(cur!==0xFFFFFFFF&&cur!==0)return blob}
@@ -1097,7 +1100,7 @@ async function fixMp4Duration(blob,fallbackSec){MP4INFO='';
         for(const u of unknown){if(u.empty){put(u.q,e1,0);continue}put(u.q,e1,rest);rest=0}
         elstInfo.push(n+'区間/不明'+unknown.length)}}
     if(mehd>=0){const e1=buf[mehd+8]===1;put(mehd+12,e1,movieSec*mvTs)}
-    MP4INFO=`トラック${trackInfo}s・録画${(fallbackSec||0).toFixed(1)}s・保存${movieSec.toFixed(1)}s${usedWall?'(録画時間を採用)':''}・断片${moofs.length}・編集${elstInfo.join(',')||'なし'}`;
+    MP4INFO=`${trackInfo}\n録画${(fallbackSec||0).toFixed(1)}s・保存${movieSec.toFixed(1)}s${usedWall?'(録画時間を採用)':''}・断片${moofs.length}・編集${elstInfo.join(',')||'なし'}`;
     return new Blob([buf],{type:blob.type});
   }catch(e){return blob}
 }
@@ -1151,7 +1154,7 @@ async function finishRec(r){S.rec=null;setCanvasSize();layoutGuides();app.classL
   if(!r.started||!r.chunks.length||r.dur<.3){toast('録画が短すぎるため保存しませんでした');return}
   let blob=new Blob(r.chunks,{type:(r.mime||'video/webm').split(';')[0]});
   const rawBlob=blob;blob=await fixMp4Duration(blob,r.dur); // iPhoneで長さが「1,988時間」などになるのを防ぐ
-  const lenFixed=blob!==rawBlob,lenInfo=MP4INFO;
+  const lenFixed=blob!==rawBlob,lenInfo=MP4INFO+`\n音声エンジン${AC?AC.sampleRate:'-'}Hz・${navigator.audioSession?'AudioSession:'+navigator.audioSession.type:'AudioSessionなし'}・${r.mime}`;
   const a=r.clip;const n=S.takes.filter(t=>t.kind==='video'&&a&&t.clipId===a.c.id).length+1;
   const take={id:uid(),kind:'video',blob,mime:blob.type,thumb:r.thumb||grabThumb(),created:Date.now(),dur:r.dur,fps:r.fps,res:ST.res,aspect:r.aspect,
     title:a?`${a.c.name} ・ テイク ${n}`:'動画',lenFixed,lenInfo,blurUsed:ST.blur,trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:VS.mode==='demo'?ST.scene:null};
@@ -1352,6 +1355,7 @@ function renderSettings(){const B=$('#settingsBody');
   <h3 class="muted small" style="margin:22px 0 0;font-weight:500">音楽</h3>
   <div class="field"><div style="flex:1"><div class="fl">撮影中のスピーカー音量</div><div class="fd">動画に入る音量は変わりません</div><input type="range" min="0" max="1" step="0.05" value="${ST.monitorVol}" data-r="monitorVol" style="width:100%"></div></div>
   <div class="field"><div style="flex:1"><div class="fl">音ズレ補正 <span class="num" id="syncV" style="color:var(--moon)">${ST.syncMs>0?'+':''}${ST.syncMs} ms</span></div><div class="fd">動画と音楽のタイミングがずれる端末向け。＋で音を遅らせます</div><input type="range" min="-200" max="200" step="10" value="${ST.syncMs}" data-r="syncMs" style="width:100%"></div></div>
+  ${row('音声エンジンの音質（調査用）','動画の長さや音がおかしいときに切り替えて試してください',seg('acRate',[[0,'自動'],[44100,'44.1k'],[48000,'48k']],true))}
   <h3 class="muted small" style="margin:22px 0 0;font-weight:500">撮影のあと</h3>
   ${row('撮影後すぐに確認','撮り直すか残すかをその場で選べます',tog('autoReview'))}
   ${row('連続撮影','止めるまで同じクリップで何テイクも続けて撮ります',tog('continuous'))}
@@ -1371,7 +1375,7 @@ function renderSettings(){const B=$('#settingsBody');
   <p class="muted small" style="text-align:center;margin-top:16px">乙打ちカメラ ${APP_VERSION} ・ <a href="https://www.otsuuchi.com/" target="_blank" rel="noopener" style="color:var(--moon)">乙打ちドットコム</a></p>`;
   $$('#settingsBody .seg').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=s.dataset.k;let v=b.dataset.v;
     if(s.dataset.bool)v=v==='true';else if(!isNaN(parseFloat(v))&&k!=='res'&&k!=='codec'&&k!=='aspect')v=parseFloat(v);ST[k]=v;saveST();
-    if(k==='aspect'){setCanvasSize();if(VS.mode==='real')tryRealCamera()}if((k==='res'||k==='fps')&&VS.mode==='real')tryRealCamera();if(k==='fps'){VS.stream=null;if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter()}renderSettings();renderCamUI()}));
+    if(k==='aspect'){setCanvasSize();if(VS.mode==='real')tryRealCamera()}if((k==='res'||k==='fps')&&VS.mode==='real')tryRealCamera();if(k==='acRate'&&AC&&!S.rec){try{AC.close()}catch(e){}AC=null}if(k==='fps'){VS.stream=null;if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter()}renderSettings();renderCamUI()}));
   $$('#settingsBody input[data-r]').forEach(r=>r.oninput=()=>{ST[r.dataset.r]=parseFloat(r.value);saveST();if(r.dataset.r==='syncMs')$('#syncV').textContent=(ST.syncMs>0?'+':'')+ST.syncMs+' ms'});
   $('#bkSave').onclick=saveBackup;$('#bkLoad').onclick=()=>$('#bkFile').click();$('#bkFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)loadBackup(f)};
   $('#showNotes').onclick=()=>openSheet('<h3>Android版の仕様</h3>'+NOTES_ALL);
@@ -1415,7 +1419,7 @@ $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation
 
 /* ================= offline ================= */
 // 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
-const APP_VERSION='0.9（11/08 23:00）';
+const APP_VERSION='0.9.1（11/08 23:20）';
 if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
   const hadController=!!navigator.serviceWorker.controller;let reloading=false;
   window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
