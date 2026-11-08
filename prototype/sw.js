@@ -1,11 +1,11 @@
 // 乙打ちカメラ オフライン対応
 // - 画面（HTML）：電波があれば最新版、弱い・ないときは端末に保存した版で起動
 // - アイコン・フォントなど：端末の保存分を即使い、裏で更新
-const CACHE = 'otsuuchicam-v5';
+const CACHE = 'otsuuchicam-v6'; // 公開のたびに変える（変わると端末側が新しい版に切り替わる）
 const CORE = ['./', './index.html', './icon.png', './icon-512.png', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -25,7 +25,7 @@ self.addEventListener('fetch', (e) => {
   if (req.mode === 'navigate') {
     e.respondWith((async () => {
       const cache = await caches.open(CACHE);
-      const network = fetch(req).then((res) => {
+      const network = fetch(req, { cache: 'no-store' }).then((res) => {
         if (res && res.ok) cache.put('./index.html', res.clone());
         return res;
       }).catch(() => null);

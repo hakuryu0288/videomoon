@@ -987,8 +987,9 @@ async function fixMp4Duration(blob,fallbackSec){
     each(moov.o+moov.h,moov.o+moov.sz,(o,sz,t,h)=>{
       if(t==='mvhd')mvhd=o;
       else if(t==='mvex')each(o+h,o+sz,(o2,sz2,t2)=>{if(t2==='mehd')mehd=o2;if(t2==='trex')trexDur[dv.getUint32(o2+12)]=dv.getUint32(o2+20)});
-      else if(t==='trak'){const tk={tkhd:-1,mdhd:-1,sum:0};
-        each(o+h,o+sz,(o2,sz2,t2,h2)=>{if(t2==='tkhd')tk.tkhd=o2;if(t2==='mdia')each(o2+h2,o2+sz2,(o3,sz3,t3)=>{if(t3==='mdhd')tk.mdhd=o3})});
+      else if(t==='trak'){const tk={tkhd:-1,mdhd:-1,elst:-1,sum:0};
+        each(o+h,o+sz,(o2,sz2,t2,h2)=>{if(t2==='tkhd')tk.tkhd=o2;if(t2==='mdia')each(o2+h2,o2+sz2,(o3,sz3,t3)=>{if(t3==='mdhd')tk.mdhd=o3});
+          if(t2==='edts')each(o2+h2,o2+sz2,(o3,sz3,t3)=>{if(t3==='elst')tk.elst=o3})});
         if(tk.tkhd<0||tk.mdhd<0)return;
         tk.id=dv.getUint32(tk.tkhd+(buf[tk.tkhd+8]===1?28:20));
         tk.ts=dv.getUint32(tk.mdhd+(buf[tk.mdhd+8]===1?28:20));
@@ -1012,7 +1013,12 @@ async function fixMp4Duration(blob,fallbackSec){
     put(mvhd+(mv1?32:24),mv1,movieSec*mvTs);
     for(const id in tracks){const tk=tracks[id],sec=tk.sec||movieSec;
       const t1=buf[tk.tkhd+8]===1;put(tk.tkhd+(t1?36:28),t1,sec*mvTs);
-      const d1=buf[tk.mdhd+8]===1;put(tk.mdhd+(d1?32:24),d1,sec*tk.ts)}
+      const d1=buf[tk.mdhd+8]===1;put(tk.mdhd+(d1?32:24),d1,sec*tk.ts);
+      // 編集リスト（elst）にも「長さ不明」が入っていることがある。不明な区間を実際の長さで埋める
+      if(tk.elst>=0){const e1=buf[tk.elst+8]===1,n=dv.getUint32(tk.elst+12),es=e1?20:12;let other=0;const unknown=[];
+        for(let i=0;i<n;i++){const q=tk.elst+16+i*es,d=e1?dv.getBigUint64(q):dv.getUint32(q);
+          const isUnknown=e1?(d===0xFFFFFFFFFFFFFFFFn):(d===0xFFFFFFFF);if(isUnknown)unknown.push(q);else other+=Number(d)}
+        for(const q of unknown)put(q,e1,Math.max(0,sec*mvTs-other))}}
     if(mehd>=0){const e1=buf[mehd+8]===1;put(mehd+12,e1,movieSec*mvTs)}
     return new Blob([buf],{type:blob.type});
   }catch(e){return blob}
@@ -1061,10 +1067,11 @@ function stopRec(why){const r=S.rec;if(!r)return;clearTimeout(r.endTimer);r.dur=
 async function finishRec(r){S.rec=null;setCanvasSize();layoutGuides();app.classList.remove('recording');$('#tabbar').classList.remove('hide');drawMoon(0);$('#tcText').textContent='00:00:00';
   if(!r.started||!r.chunks.length||r.dur<.3){toast('録画が短すぎるため保存しませんでした');return}
   let blob=new Blob(r.chunks,{type:(r.mime||'video/webm').split(';')[0]});
-  blob=await fixMp4Duration(blob,r.dur); // iPhoneで長さが「1,988時間」などになるのを防ぐ
+  const rawBlob=blob;blob=await fixMp4Duration(blob,r.dur); // iPhoneで長さが「1,988時間」などになるのを防ぐ
+  const lenFixed=blob!==rawBlob;
   const a=r.clip;const n=S.takes.filter(t=>t.kind==='video'&&a&&t.clipId===a.c.id).length+1;
   const take={id:uid(),kind:'video',blob,mime:blob.type,thumb:r.thumb||grabThumb(),created:Date.now(),dur:r.dur,fps:r.fps,res:ST.res,aspect:r.aspect,
-    title:a?`${a.c.name} ・ テイク ${n}`:'動画',trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:VS.mode==='demo'?ST.scene:null};
+    title:a?`${a.c.name} ・ テイク ${n}`:'動画',lenFixed,trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:VS.mode==='demo'?ST.scene:null};
   S.takes.unshift(take);await DB.put('takes',take);updateLastThumb();askPersist();
   if(ST.continuous&&!S.contStop){toast(`テイク ${n} を保存。続けて撮影します`);await sleep(1200);if(S.tab==='camera'&&!S.rec&&!S.contStop)startRec();return}
   if(ST.autoReview)showReview(take);else toast('ライブラリに保存しました')}
@@ -1129,7 +1136,7 @@ async function deleteTake(id){S.takes=S.takes.filter(t=>t.id!==id);await DB.del(
 const PL={urls:[]};
 function openPlayer(t){closePlayerMedia();const m=$('#plMedia');m.className='pl-media';$('#plCtrl').classList.remove('on');
   $('#plTitle').textContent=t.title;const d=new Date(t.created);
-  $('#plMeta').textContent=(t.kind==='video'?`${t.dur.toFixed(1)}秒 ・ ${t.fps}fps ・ ${t.res}p ・ ${t.trackName||'音声なし'}`:`写真 ・ ${t.res} ・ ${d.toLocaleString('ja-JP')}`)+` ・ ${fmtBytes(t.blob.size)}`;
+  $('#plMeta').textContent=(t.kind==='video'?`${t.dur.toFixed(1)}秒 ・ ${t.fps}fps ・ ${t.res}p ・ ${t.trackName||'音声なし'}`:`写真 ・ ${t.res} ・ ${d.toLocaleString('ja-JP')}`)+` ・ ${fmtBytes(t.blob.size)}`+(t.kind==='video'&&t.mime&&t.mime.includes('mp4')?(t.lenFixed?' ・ 長さ補正済み':' ・ 長さ補正なし'):'');
   const url=URL.createObjectURL(t.blob);PL.urls.push(url);
   if(t.kind==='video'){const v=document.createElement('video');v.src=url;v.controls=true;v.playsInline=true;v.loop=true;m.appendChild(v);fixDuration(v);v.play().catch(()=>{})}
   else{const i=document.createElement('img');i.src=url;m.appendChild(i)}
@@ -1275,7 +1282,7 @@ function renderSettings(){const B=$('#settingsBody');
   <a class="btn sec" style="width:100%;margin-top:10px;text-decoration:none" href="https://github.com/hakuryu0288/videomoon/releases/download/latest/otsuuchicam.apk">Androidアプリ版（テスト中）をダウンロード</a>
   <button class="btn sec" style="width:100%;margin-top:8px" id="showNotes">Androidアプリ版との違い</button>
   <button class="btn sec" style="width:100%;margin-top:8px;color:var(--rec)" id="wipe">保存したデータをすべて削除</button>
-  <p class="muted small" style="text-align:center;margin-top:16px">乙打ちカメラ 0.3 ・ <a href="https://www.otsuuchi.com/" target="_blank" rel="noopener" style="color:var(--moon)">乙打ちドットコム</a></p>`;
+  <p class="muted small" style="text-align:center;margin-top:16px">乙打ちカメラ ${APP_VERSION} ・ <a href="https://www.otsuuchi.com/" target="_blank" rel="noopener" style="color:var(--moon)">乙打ちドットコム</a></p>`;
   $$('#settingsBody .seg').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=s.dataset.k;let v=b.dataset.v;
     if(s.dataset.bool)v=v==='true';else if(!isNaN(parseFloat(v))&&k!=='res'&&k!=='codec'&&k!=='aspect')v=parseFloat(v);ST[k]=v;saveST();
     if(k==='aspect'){setCanvasSize();if(VS.mode==='real')tryRealCamera()}if(k==='fps'){VS.stream=null;if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter()}renderSettings();renderCamUI()}));
@@ -1322,8 +1329,20 @@ $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation
 
 /* ================= offline ================= */
 // 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
+const APP_VERSION='0.5（11/08 21:00）';
 if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
-  window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{})})}
+  const hadController=!!navigator.serviceWorker.controller;let reloading=false;
+  window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
+    // ホーム画面のアプリは閉じても裏で開いたままのことが多いので、画面に戻るたびに新しい版を確認する
+    const check=()=>{try{reg.update()}catch(e){}};
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')check()});
+    setInterval(check,15*60*1000)}).catch(()=>{})});
+  // 新しい版が入ったら、録画中・編集中でなければ読み込み直す
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!hadController||reloading)return;
+    const busyNow=()=>S.rec||S.counting||S.tab==='trim'||$('#sheetLayer').classList.contains('open');
+    const go=()=>{reloading=true;location.reload()};
+    if(!busyNow()){toast('新しいバージョンに更新します');setTimeout(go,900)}
+    else{const iv=setInterval(()=>{if(!busyNow()){clearInterval(iv);toast('新しいバージョンに更新します');setTimeout(go,900)}},2000)}})}
 
 /* ================= boot ================= */
 (async()=>{setInterval(()=>{const d=new Date();$('#sbTime').textContent=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')},10000);
