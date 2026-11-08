@@ -380,6 +380,7 @@ svg{display:block}
           <button class="chip accent num" id="chipFps">60p</button>
           <button class="chip num" id="chipRes">1080 · 9:16</button>
           <button class="chip" id="chipTimer" aria-label="カウントダウン"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg><span class="num">3s</span></button>
+          <button class="chip num" id="chipLens" style="display:none" aria-label="レンズ">1x</button>
           <button class="chip" id="chipFull" style="display:none" aria-label="全画面">⛶</button>
           <span class="spacer"></span>
           <span id="recTC"><span class="dot"></span><span id="tcText">00:00:00</span></span>
@@ -550,7 +551,7 @@ const LS={get(k,d){try{const v=localStorage.getItem('vm_'+k);return v?JSON.parse
 
 /* ================= state ================= */
 const ST=Object.assign({fps:60,res:'1080',aspect:'auto',stab:true,flicker:50,countdown:3,grid:true,zebra:false,zebraLv:95,peaking:false,histo:true,
-  mirrorPreview:true,mirrorSave:false,monitorVol:0.9,syncMs:0,autoReview:true,continuous:false,codec:'H.264',scene:'stage',facing:'back'},LS.get('settings',{}));
+  mirrorPreview:true,mirrorSave:false,lens:'wide',monitorVol:0.9,syncMs:0,autoReview:true,continuous:false,codec:'H.264',scene:'stage',facing:'back'},LS.get('settings',{}));
 const PRO={ae:true,iso:1600,shut:120,awb:true,wb:5600,ev:0,af:true,focus:0.7};
 const S={tab:'camera',mode:'video',tracks:[],takes:[],activeClip:LS.get('activeClip',null),buffers:new Map(),peaks:new Map(),
   rec:null,counting:false,libFilter:'all',selecting:false,picked:new Set()};
@@ -873,11 +874,39 @@ function loop(ts){VS.raf=requestAnimationFrame(loop);const minDt=1000/ST.fps-2;i
   updateRecUI()}
 function startLoop(){if(VS.running)return;VS.running=true;VS.raf=requestAnimationFrame(loop);startAnalysis()}
 function stopLoop(){VS.running=false;cancelAnimationFrame(VS.raf);stopAnalysis()}
+/* iPhoneの背面カメラは、何も指定しないと「自動でレンズを切り替えるカメラ」になり、
+   手など近くの物が映ると超広角に切り替わって画面がカクッと動く。1つのレンズを指定して防ぐ。 */
+const LENS_NAME={ultra:'0.5x',wide:'1x',tele:'望遠',auto:'自動'};
+function lensKind(label){const l=(label||'').toLowerCase();
+  if(/front|前面|facing front/.test(l))return 'front';
+  if(/triple|dual|トリプル|デュアル/.test(l))return 'auto';
+  if(/ultra ?wide|超広角/.test(l))return 'ultra';
+  if(/tele|望遠/.test(l))return 'tele';
+  if(/back|rear|背面|facing back/.test(l))return 'wide';
+  return 'other'}
+async function scanLenses(){try{const ds=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput'&&d.label);const m={};
+    for(const d of ds){const k=lensKind(d.label);if(k!=='front'&&k!=='other'&&!m[k])m[k]=d.deviceId}
+    VS.lenses=(m.ultra||m.tele||m.auto)?m:{}}catch(e){VS.lenses={}}} // 区別がない端末（多くのAndroid）は端末任せ
+function resWH(){const r=ST.res==='720'?[1280,720]:ST.res==='4K'?[3840,2160]:[1920,1080];return ASP()==='16:9'?r:[r[1],r[0]]}
 async function tryRealCamera(){if(EMBED||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return false;
   try{if(VS.camStream)VS.camStream.getTracks().forEach(t=>t.stop());
-    const land=ASP()==='16:9';const s=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:ST.facing==='front'?'user':'environment',frameRate:{ideal:ST.fps,max:ST.fps},width:{ideal:land?1920:1080},height:{ideal:land?1080:1920}}});
-    VS.camStream=s;VS.track=s.getVideoTracks()[0];VS.caps=VS.track.getCapabilities?VS.track.getCapabilities():{};const v=$('#camVideo');v.srcObject=s;v.style.display='block';demoCv.style.display='none';VS.mode='real';$('#demoTag').style.display='none';applyRealConstraints();return true}
+    const [w,h]=resWH(),base={frameRate:{ideal:ST.fps,max:ST.fps},width:{ideal:w},height:{ideal:h}};
+    const open=c=>navigator.mediaDevices.getUserMedia({audio:false,video:c});
+    const back=ST.facing!=='front';VS.lenses=VS.lenses||{};
+    let s=(back&&VS.lenses[ST.lens])?await open({...base,deviceId:{exact:VS.lenses[ST.lens]}}):await open({...base,facingMode:back?'environment':'user'});
+    if(back&&!VS.lensScanned){VS.lensScanned=true;await scanLenses();
+      const id=VS.lenses[ST.lens]||VS.lenses.wide;const cur=s.getVideoTracks()[0].getSettings().deviceId;
+      if(id&&cur!==id){s.getTracks().forEach(t=>t.stop());s=await open({...base,deviceId:{exact:id}})}}
+    VS.camStream=s;VS.track=s.getVideoTracks()[0];VS.caps=VS.track.getCapabilities?VS.track.getCapabilities():{};
+    const v=$('#camVideo');v.srcObject=s;v.style.display='block';demoCv.style.display='none';VS.mode='real';$('#demoTag').style.display='none';
+    startCamFpsCounter(v);applyRealConstraints();updateLensChip();return true}
   catch(e){return false}}
+// 実際にカメラから届いているフレーム数を数える（画面の描画回数ではなく）
+function startCamFpsCounter(v){if(!v.requestVideoFrameCallback||v._fpsOn)return;v._fpsOn=true;VS.camFrames=[];
+  const cb=(now)=>{VS.camFrames.push(now);while(VS.camFrames.length&&now-VS.camFrames[0]>1000)VS.camFrames.shift();v.requestVideoFrameCallback(cb)};v.requestVideoFrameCallback(cb)}
+function updateLensChip(){const c=$('#chipLens'),ks=['ultra','wide','tele','auto'].filter(k=>VS.lenses&&VS.lenses[k]);
+  const show=VS.mode==='real'&&ST.facing!=='front'&&ks.length>1;c.style.display=show?'inline-flex':'none';
+  if(show)c.textContent=LENS_NAME[VS.lenses[ST.lens]?ST.lens:'wide']}
 function applyRealConstraints(){if(VS.mode!=='real')return;const c=VS.caps||{},adv={};const e=effExposure();
   if(c.exposureMode){adv.exposureMode=PRO.ae?'continuous':'manual'}if(!PRO.ae&&c.exposureTime)adv.exposureTime=clamp(10000/e.shut,c.exposureTime.min,c.exposureTime.max);
   if(!PRO.ae&&c.iso)adv.iso=clamp(e.iso,c.iso.min,c.iso.max);if(PRO.ae&&c.exposureCompensation)adv.exposureCompensation=clamp(PRO.ev,c.exposureCompensation.min,c.exposureCompensation.max);
@@ -968,12 +997,15 @@ $('#chipFps').onclick=()=>{if(S.rec)return;const o=[60,30,24];ST.fps=o[(o.indexO
 $('#chipRes').onclick=()=>{if(S.rec)return;openSheet(`<h3>解像度と画面の向き</h3><div class="field"><div class="fl">解像度</div><div class="seg" id="shRes"><button data-v="720">720p</button><button data-v="1080">1080p</button><button data-v="4K">4K</button></div></div>
   <div class="field"><div class="fl">画面比</div><div class="seg" id="shAsp"><button data-v="auto" class="jp">自動</button><button data-v="9:16" class="jp">縦 9:16</button><button data-v="16:9" class="jp">横 16:9</button></div></div><p class="muted small">「自動」は端末を横に持つと横長、縦に持つと縦長で撮影します（録画中は固定）。4Kは端末によっては60fpsに対応していません。</p>`);
   const up=()=>{$$('#shRes button').forEach(b=>b.classList.toggle('on',b.dataset.v===ST.res));$$('#shAsp button').forEach(b=>b.classList.toggle('on',b.dataset.v===ST.aspect))};up();
-  $$('#shRes button').forEach(b=>b.onclick=()=>{ST.res=b.dataset.v;saveST();up();renderCamUI()});
+  $$('#shRes button').forEach(b=>b.onclick=()=>{ST.res=b.dataset.v;saveST();up();renderCamUI();if(VS.mode==='real')tryRealCamera()});
   $$('#shAsp button').forEach(b=>b.onclick=()=>{ST.aspect=b.dataset.v;saveST();setCanvasSize();up();renderCamUI();if(VS.mode==='real')tryRealCamera()})};
 $('#chipTimer').onclick=()=>{if(S.rec)return;const o=[0,3,5,10];ST.countdown=o[(o.indexOf(ST.countdown)+1)%4];saveST();renderCamUI()};
 $('#demoTag').onclick=()=>{const k=Object.keys(SCENES);ST.scene=k[(k.indexOf(ST.scene)+1)%k.length];saveST();renderCamUI()};
 $('#warnTag').onclick=()=>{openSheet(`<h3>照明のちらつき（フリッカー）</h3><p>LEDや蛍光灯は電源の周波数に合わせて明滅しています。シャッタースピードがその周期と合わないと、映像に横縞や明るさのムラが出ます。</p><p>${ST.flicker}Hz地域では 1/${2*ST.flicker} や 1/${ST.flicker} が安全です。設定の「フリッカー低減」で地域を選べます。</p><button class="btn pri" style="width:100%;margin-top:8px" id="fixFl">安全な値にする（1/${autoShutter()}）</button>`);$('#fixFl').onclick=()=>{PRO.shut=autoShutter();renderPro();closeSheet()}};
 $('#chipFull').onclick=toggleFs;
+$('#chipLens').onclick=async()=>{if(S.rec||S.counting)return;const ks=['ultra','wide','tele','auto'].filter(k=>VS.lenses&&VS.lenses[k]);if(ks.length<2)return;
+  ST.lens=ks[(ks.indexOf(ST.lens)+1)%ks.length];saveST();await tryRealCamera();
+  toast(ST.lens==='auto'?'自動切替：近くの物が映るとレンズが切り替わり、画面が動くことがあります':`レンズ：${LENS_NAME[ST.lens]}`,3000)};
 $('#flipBtn').onclick=()=>{ST.facing=ST.facing==='back'?'front':'back';saveST();if(VS.mode==='real')tryRealCamera();renderCamUI();toast(ST.facing==='front'?'前面カメラ':'背面カメラ')};
 $('#lastThumb').onclick=()=>showScreen('library');
 
@@ -1047,13 +1079,16 @@ function beep(f){try{const c=ac(),o=c.createOscillator(),g=c.createGain();o.freq
 
 $('#recBtn').onclick=async()=>{if(!S.rec&&!S.counting&&S.mode==='video')freshAudio();else ac();if(S.mode==='photo')return takePhoto();
   if(S.counting){S.cancelCd=true;S.contStop=true;return}if(S.rec){S.contStop=true;return stopRec('user')}S.contStop=false;startRec()};
+/** 画質：解像度とfpsに合わせて録画の情報量を決める（1080p60でおよそ22Mbps） */
+function recBitrate(){let w,h;const st=VS.mode==='real'&&VS.track&&VS.track.getSettings?VS.track.getSettings():null;
+  if(st&&st.width){w=st.width;h=st.height}else[w,h]=[demoCv.width,demoCv.height];return clamp(w*h*ST.fps*0.18,6e6,50e6)}
 async function startRec(){if(typeof MediaRecorder==='undefined'){toast('このブラウザは録画に対応していません');return}
   const a=getActiveClip();if(a){try{await ensureBuffer(a.tr);await bufForCtx(a.tr)}catch(e){toast('音源を読み込めませんでした');return}}
   ppSel=null;renderPro();$('#tabbar').classList.add('hide');app.classList.add('recording');
   if(ST.countdown){const ok=await countdown(ST.countdown);if(!ok){app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}}
   const vt=videoTrackForRecording();if(!vt){toast('映像を取得できませんでした');app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}
   const ctx=ac();const tracks=[vt];let dest=null;if(a){dest=ctx.createMediaStreamDestination();tracks.push(dest.stream.getAudioTracks()[0])}
-  const mime=pickMime();let mr;try{mr=new MediaRecorder(new MediaStream(tracks),mime?{mimeType:mime,videoBitsPerSecond:ST.fps>=60?12e6:8e6}:{})}catch(e){toast('録画を開始できませんでした');app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}
+  const mime=pickMime();let mr;try{mr=new MediaRecorder(new MediaStream(tracks),mime?{mimeType:mime,videoBitsPerSecond:recBitrate()}:{})}catch(e){toast('録画を開始できませんでした');app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}
   const r={mr,chunks:[],mime:mr.mimeType||mime,clip:a,t0:0,dur:0,thumb:null,started:false,isSample:a&&a.tr.isSample,fps:ST.fps,aspect:ASP()};S.rec=r;
   mr.ondataavailable=e=>{if(e.data&&e.data.size)r.chunks.push(e.data)};
   mr.onstop=()=>finishRec(r);
@@ -1097,7 +1132,9 @@ function updateRecUI(){const r=S.rec;if(!r){return}let el=0;
   else drawMoon(((performance.now()-r.t0)/1000%60)/60);
   if(r.started){el=(performance.now()-r.t0)/1000}const f=Math.floor(el*r.fps)%r.fps,s=Math.floor(el);
   $('#tcText').textContent=`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}:${String(f).padStart(2,'0')}`}
-setInterval(()=>{const n=VS.frames.length;$('#fpsMeter').innerHTML=`実測 <b>${n?n:'--'}</b> / ${ST.fps} fps`},500);
+setInterval(()=>{const real=VS.mode==='real'&&VS.track;const n=real&&VS.camFrames?VS.camFrames.length:VS.frames.length;
+  const st=real&&VS.track.getSettings?VS.track.getSettings():null;const res=st&&st.width?`${st.width}×${st.height} ・ `:'';
+  $('#fpsMeter').innerHTML=`${res}実測 <b>${n?n:'--'}</b> / ${ST.fps} fps`},500);
 
 async function takePhoto(){const src=sourceEl(),c=document.createElement('canvas');const land=ASP()==='16:9';
   if(VS.mode==='real'){c.width=src.videoWidth;c.height=src.videoHeight}else{c.width=demoCv.width;c.height=demoCv.height}
@@ -1298,7 +1335,7 @@ function renderSettings(){const B=$('#settingsBody');
   <p class="muted small" style="text-align:center;margin-top:16px">乙打ちカメラ ${APP_VERSION} ・ <a href="https://www.otsuuchi.com/" target="_blank" rel="noopener" style="color:var(--moon)">乙打ちドットコム</a></p>`;
   $$('#settingsBody .seg').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=s.dataset.k;let v=b.dataset.v;
     if(s.dataset.bool)v=v==='true';else if(!isNaN(parseFloat(v))&&k!=='res'&&k!=='codec'&&k!=='aspect')v=parseFloat(v);ST[k]=v;saveST();
-    if(k==='aspect'){setCanvasSize();if(VS.mode==='real')tryRealCamera()}if(k==='fps'){VS.stream=null;if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter()}renderSettings();renderCamUI()}));
+    if(k==='aspect'){setCanvasSize();if(VS.mode==='real')tryRealCamera()}if((k==='res'||k==='fps')&&VS.mode==='real')tryRealCamera();if(k==='fps'){VS.stream=null;if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter()}renderSettings();renderCamUI()}));
   $$('#settingsBody input[data-r]').forEach(r=>r.oninput=()=>{ST[r.dataset.r]=parseFloat(r.value);saveST();if(r.dataset.r==='syncMs')$('#syncV').textContent=(ST.syncMs>0?'+':'')+ST.syncMs+' ms'});
   $('#bkSave').onclick=saveBackup;$('#bkLoad').onclick=()=>$('#bkFile').click();$('#bkFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)loadBackup(f)};
   $('#showNotes').onclick=()=>openSheet('<h3>Android版の仕様</h3>'+NOTES_ALL);
@@ -1342,7 +1379,7 @@ $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation
 
 /* ================= offline ================= */
 // 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
-const APP_VERSION='0.6（11/08 21:30）';
+const APP_VERSION='0.7（11/08 22:00）';
 if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
   const hadController=!!navigator.serviceWorker.controller;let reloading=false;
   window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
