@@ -1039,9 +1039,126 @@ $('#lastThumb').onclick=()=>showScreen('library');
  * 長さの欄が「不明（最大値）」のままなので、写真アプリで1,988時間などと表示される。
  * 実際のフレームの長さを合計して、ヘッダー（mvhd / tkhd / mdhd / mehd）に正しい長さを書き込む。
  */
+/** 細切れ（fragmented）MP4を、普通のMP4（サンプル表を全部moovに持つ形）に組み直す。
+ *  写真アプリは普通形式なら長さを正しく読む（実機から書き出されたファイルで確認済み）。
+ *  失敗したら null を返す（呼び出し側は元のファイルを使う）。 */
+function defragMp4(buf){
+  const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
+  const typ=o=>String.fromCharCode(buf[o+4],buf[o+5],buf[o+6],buf[o+7]);
+  const each=(start,end,cb)=>{let o=start;while(o+8<=end){let size=dv.getUint32(o),hdr=8;
+      if(size===1){size=Number(dv.getBigUint64(o+8));hdr=16}else if(size===0)size=end-o;
+      if(size<hdr||o+size>end)break;cb(o,size,typ(o),hdr);o+=size}};
+  const find=(start,end,t)=>{let r=null;each(start,end,(o,sz,tt,h)=>{if(!r&&tt===t)r={o,sz,h}});return r};
+  let ftyp=null,moov=null;const moofs=[];
+  each(0,buf.length,(o,sz,t,h)=>{if(t==='ftyp')ftyp={o,sz,h};else if(t==='moov')moov={o,sz,h};else if(t==='moof')moofs.push({o,sz,h})});
+  if(!moov||!moofs.length)return null;
+  const mvhdB=find(moov.o+moov.h,moov.o+moov.sz,'mvhd');if(!mvhdB)return null;
+  const mvTs=dv.getUint32(mvhdB.o+(buf[mvhdB.o+8]===1?28:20));if(!mvTs)return null;
+  const trex={};const mvex=find(moov.o+moov.h,moov.o+moov.sz,'mvex');
+  if(mvex)each(mvex.o+mvex.h,mvex.o+mvex.sz,(o,sz,t)=>{if(t==='trex')trex[dv.getUint32(o+12)]={dur:dv.getUint32(o+20),size:dv.getUint32(o+24),flags:dv.getUint32(o+28)}});
+  const tracks=[],byId={};
+  each(moov.o+moov.h,moov.o+moov.sz,(o,sz,t,h)=>{if(t!=='trak')return;
+    const tkhd=find(o+h,o+sz,'tkhd'),mdia=find(o+h,o+sz,'mdia');if(!tkhd||!mdia)return;
+    const mdhd=find(mdia.o+mdia.h,mdia.o+mdia.sz,'mdhd'),hdlr=find(mdia.o+mdia.h,mdia.o+mdia.sz,'hdlr'),minf=find(mdia.o+mdia.h,mdia.o+mdia.sz,'minf');
+    if(!mdhd||!hdlr||!minf)return;const stbl=find(minf.o+minf.h,minf.o+minf.sz,'stbl');if(!stbl)return;
+    const stsd=find(stbl.o+stbl.h,stbl.o+stbl.sz,'stsd');if(!stsd)return;
+    const keep=[];each(minf.o+minf.h,minf.o+minf.sz,(o2,sz2,t2)=>{if(t2!=='stbl')keep.push(buf.subarray(o2,o2+sz2))});
+    const tk={id:dv.getUint32(tkhd.o+(buf[tkhd.o+8]===1?28:20)),tkhd:buf.slice(tkhd.o,tkhd.o+tkhd.sz),mdhd:buf.slice(mdhd.o,mdhd.o+mdhd.sz),
+      hdlr:buf.subarray(hdlr.o,hdlr.o+hdlr.sz),minfKeep:keep,stsd:buf.subarray(stsd.o,stsd.o+stsd.sz),
+      ts:dv.getUint32(mdhd.o+(buf[mdhd.o+8]===1?28:20)),kind:String.fromCharCode(buf[hdlr.o+16],buf[hdlr.o+17],buf[hdlr.o+18],buf[hdlr.o+19]),
+      samples:[],chunks:[],firstDt:null};
+    if(!tk.ts)return;tracks.push(tk);byId[tk.id]=tk});
+  if(!tracks.length)return null;
+  // 断片を読む
+  for(const m of moofs){let prevEnd=null;
+    each(m.o+m.h,m.o+m.sz,(o,sz,t,h)=>{if(t!=='traf')return;
+      let tk=null,base=m.o,def={},dt=null;
+      each(o+h,o+sz,(o2,sz2,t2)=>{
+        if(t2==='tfhd'){const fl=dv.getUint32(o2+8)&0xffffff;tk=byId[dv.getUint32(o2+12)]||null;let p=o2+16;
+          const tx=tk?trex[tk.id]||{}:{};def={dur:tx.dur,size:tx.size,flags:tx.flags};
+          if(fl&1){base=Number(dv.getBigUint64(p));p+=8}else if(fl&0x20000)base=m.o;else base=prevEnd??m.o;
+          if(fl&2)p+=4;if(fl&8){def.dur=dv.getUint32(p);p+=4}if(fl&0x10){def.size=dv.getUint32(p);p+=4}if(fl&0x20){def.flags=dv.getUint32(p);p+=4}}
+        else if(t2==='tfdt'&&tk){dt=buf[o2+8]===1?Number(dv.getBigUint64(o2+12)):dv.getUint32(o2+12)}
+        else if(t2==='trun'&&tk){const ver=buf[o2+8],fl=dv.getUint32(o2+8)&0xffffff,n=dv.getUint32(o2+12);let p=o2+16;
+          let off=base;if(fl&1){off=base+dv.getInt32(p);p+=4}else if(prevEnd!=null)off=prevEnd;
+          let firstFlags=null;if(fl&4){firstFlags=dv.getUint32(p);p+=4}
+          if(tk.firstDt==null)tk.firstDt=dt??0;
+          const chunk={src:off,size:0,n:0,first:tk.samples.length};
+          for(let i=0;i<n;i++){
+            const dur=(fl&0x100)?dv.getUint32((p+=4)-4):def.dur;
+            const size=(fl&0x200)?dv.getUint32((p+=4)-4):def.size;
+            let flags=(fl&0x400)?dv.getUint32((p+=4)-4):def.flags;if(i===0&&firstFlags!=null)flags=firstFlags;
+            let cto=0;if(fl&0x800){cto=ver===1?dv.getInt32(p):dv.getUint32(p);p+=4}
+            if(dur==null||size==null)throw new Error('trunの値なし');
+            tk.samples.push({dur,size,sync:!((flags??0)&0x10000),cto});chunk.size+=size;chunk.n++}
+          if(chunk.src<0||chunk.src+chunk.size>buf.length)throw new Error('データ位置が範囲外');
+          if(chunk.n)tk.chunks.push(chunk);prevEnd=off+chunk.size}})})}
+  if(!tracks.some(t=>t.samples.length))return null;
+  const live=tracks.filter(t=>t.samples.length);
+  // 書き出し用の小道具
+  const parts=[];let total=0;
+  const u32=v=>{const a=new Uint8Array(4);new DataView(a.buffer).setUint32(0,v>>>0);return a};
+  const u64=v=>{const a=new Uint8Array(8);new DataView(a.buffer).setBigUint64(0,BigInt(v));return a};
+  const cat=arr=>{let n=0;for(const a of arr)n+=a.length;const r=new Uint8Array(n);let o=0;for(const a of arr){r.set(a,o);o+=a.length}return r};
+  const box=(t,...kids)=>{const body=cat(kids);const r=new Uint8Array(8+body.length);new DataView(r.buffer).setUint32(0,r.length);
+    for(let i=0;i<4;i++)r[4+i]=t.charCodeAt(i);r.set(body,8);return r};
+  const full=(t,ver,flags,...kids)=>box(t,u32((ver<<24)|flags),...kids);
+  // mdat（64bitサイズで書く）
+  const ftypB=ftyp?buf.subarray(ftyp.o,ftyp.o+ftyp.sz):box('ftyp',new TextEncoder().encode('isom'),u32(512),new TextEncoder().encode('isomiso2avc1mp41'));
+  let dataLen=0;for(const tk of live)for(const c of tk.chunks)dataLen+=c.size;
+  const mdatHdr=new Uint8Array(16);const mh=new DataView(mdatHdr.buffer);mh.setUint32(0,1);mdatHdr.set([109,100,97,116],4);mh.setBigUint64(8,BigInt(16+dataLen));
+  let pos=ftypB.length+16;
+  // 元のファイル順に並べてコピー（映像と音声が交互に並ぶ）
+  const allChunks=[];for(const tk of live)for(const c of tk.chunks)allChunks.push(c);allChunks.sort((a,b)=>a.src-b.src);
+  const dataParts=[];for(const c of allChunks){c.dst=pos;pos+=c.size;dataParts.push(buf.subarray(c.src,c.src+c.size))}
+  const big=pos>0xFFFFFFFF;
+  // トラックの開始時刻（いちばん早いトラックを0にそろえる）
+  const startSec=Math.min(...live.map(t=>t.firstDt/t.ts));
+  let movieDur=0;
+  const traks=live.map(tk=>{
+    const S=tk.samples,mediaDur=S.reduce((a,s)=>a+s.dur,0);
+    // stts
+    const stts=[];for(const s of S){const l=stts[stts.length-1];if(l&&l[1]===s.dur)l[0]++;else stts.push([1,s.dur])}
+    const sttsB=full('stts',0,0,u32(stts.length),...stts.flatMap(e=>[u32(e[0]),u32(e[1])]));
+    const kids=[tk.stsd,sttsB];
+    const hasCto=S.some(s=>s.cto!==0);let minCto=0;
+    if(hasCto){const neg=S.some(s=>s.cto<0);minCto=Math.min(...S.map(s=>s.cto));
+      const ct=[];for(const s of S){const l=ct[ct.length-1];if(l&&l[1]===s.cto)l[0]++;else ct.push([1,s.cto])}
+      kids.push(full('ctts',neg?1:0,0,u32(ct.length),...ct.flatMap(e=>[u32(e[0]),u32(e[1])])))}
+    if(tk.kind==='vide'&&S.some(s=>!s.sync)){const ss=[];S.forEach((s,i)=>{if(s.sync)ss.push(u32(i+1))});kids.push(full('stss',0,0,u32(ss.length),...ss))}
+    // stsc：チャンクごとのサンプル数
+    const sc=[];tk.chunks.forEach((c,i)=>{const l=sc[sc.length-1];if(!l||l[1]!==c.n)sc.push([i+1,c.n])});
+    kids.push(full('stsc',0,0,u32(sc.length),...sc.flatMap(e=>[u32(e[0]),u32(e[1]),u32(1)])));
+    kids.push(full('stsz',0,0,u32(0),u32(S.length),...S.map(s=>u32(s.size))));
+    kids.push(big?full('co64',0,0,u32(tk.chunks.length),...tk.chunks.map(c=>u64(c.dst))):full('stco',0,0,u32(tk.chunks.length),...tk.chunks.map(c=>u32(c.dst))));
+    const stbl=box('stbl',...kids);
+    const minf=box('minf',...tk.minfKeep,stbl);
+    // mdhd：長さを書き換え
+    const md=tk.mdhd,mdv=new DataView(md.buffer,md.byteOffset,md.byteLength);
+    if(md[8]===1)mdv.setBigUint64(32,BigInt(mediaDur));else mdv.setUint32(24,mediaDur);
+    const mdia=box('mdia',md,tk.hdlr,minf);
+    // 編集リスト：開始の遅れ（空の区間）＋表示する範囲
+    const shift=Math.round((tk.firstDt/tk.ts-startSec)*mvTs);
+    let dts=0,presEnd=0;for(const s of S){presEnd=Math.max(presEnd,dts+s.cto+s.dur);dts+=s.dur}
+    const showDur=Math.round((presEnd-minCto)/tk.ts*mvTs);
+    const ents=[];if(shift>0)ents.push([shift,-1]);ents.push([showDur,hasCto?minCto:0]);
+    const elst=full('elst',0,0,u32(ents.length),...ents.flatMap(e=>[u32(e[0]),u32(e[1]),u32(0x00010000)]));
+    const trackDur=shift+showDur;movieDur=Math.max(movieDur,trackDur);
+    const th=tk.tkhd,thv=new DataView(th.buffer,th.byteOffset,th.byteLength);
+    if(th[8]===1)thv.setBigUint64(36,BigInt(trackDur));else thv.setUint32(28,trackDur);
+    thv.setUint32(8,thv.getUint32(8)|3); // 有効＋ムービーに含める
+    return box('trak',th,box('edts',elst),mdia)});
+  const mv=buf.slice(mvhdB.o,mvhdB.o+mvhdB.sz),mvv=new DataView(mv.buffer,mv.byteOffset,mv.byteLength);
+  if(mv[8]===1)mvv.setBigUint64(32,BigInt(movieDur));else mvv.setUint32(24,movieDur);
+  const moovB=box('moov',mv,...traks);
+  return {data:cat([ftypB,mdatHdr,...dataParts,moovB]),sec:movieDur/mvTs,frags:moofs.length,
+    info:live.map(t=>(t.kind==='soun'?'音':'映')+(t.samples.reduce((a,s)=>a+s.dur,0)/t.ts).toFixed(2)+'s').join('/')};
+}
 async function fixMp4Duration(blob,fallbackSec){MP4INFO='';
   if(!blob||!/mp4|quicktime/i.test(blob.type||''))return blob;
   let buf;try{buf=new Uint8Array(await blob.arrayBuffer())}catch(e){return blob}
+  // 細切れ形式なら、まず普通形式に組み直す（写真アプリが長さを読み違えないように）
+  let defrag='',rebuilt=false;try{const r=defragMp4(buf);if(r){buf=r.data;rebuilt=true;defrag='元は細切れ'+r.frags+'→組み直し'}}catch(e){defrag='組み直し失敗('+e.message+')'}
   const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
   const typ=o=>String.fromCharCode(buf[o+4],buf[o+5],buf[o+6],buf[o+7]);
   const each=(start,end,cb)=>{let o=start;while(o+8<=end){let size=dv.getUint32(o),hdr=8;
@@ -1082,7 +1199,7 @@ async function fixMp4Duration(blob,fallbackSec){MP4INFO='';
           if(fl&0x100){for(let i=0;i<n;i++)byId[id].frag+=dv.getUint32(p+i*per)}else byId[id].frag+=n*(def??trexDur[id]??0)}})});
     let movieSec=0;for(const tk of tracks){tk.sec=tk.ts?(tk.frag+tk.stbl)/tk.ts:0;movieSec=Math.max(movieSec,tk.sec)}
     let usedWall=false;
-    if(fallbackSec>0&&(!(movieSec>0)||Math.abs(movieSec-fallbackSec)/fallbackSec>.08)){movieSec=fallbackSec;usedWall=true}
+    if(fallbackSec>0&&(!(movieSec>0)||(!rebuilt&&Math.abs(movieSec-fallbackSec)/fallbackSec>.08))){movieSec=fallbackSec;usedWall=true}
     for(const tk of tracks)if(!(tk.sec>0)||usedWall)tk.sec=movieSec;
     if(!(movieSec>0)){MP4INFO='長さを計算できませんでした';return blob}
     // 直す前の値（調査用）
@@ -1108,9 +1225,9 @@ async function fixMp4Duration(blob,fallbackSec){MP4INFO='';
           if(media.some(e=>bad(e.d,e1))||Math.abs(total-want)>Math.max(2,want*.08)){
             media.forEach((e,i)=>{const v=i===0?want:0;e1?dv.setBigUint64(e.q,BigInt(v)):dv.setUint32(e.q,v)});changed++}}}}
     MP4INFO=`${tracks.map(t=>`${t.kind==='soun'?'音声':t.kind==='vide'?'映像':'?'}${t.sec.toFixed(1)}s(${t.codec||'?'}${t.rate?' '+t.rate+'Hz':''})`).join(' / ')}
-録画${(fallbackSec||0).toFixed(1)}s→保存${movieSec.toFixed(1)}s${usedWall?'(録画時間)':''}・${moofs.length?'断片'+moofs.length:'普通形式'}・修正${changed}
+録画${(fallbackSec||0).toFixed(1)}s→保存${movieSec.toFixed(1)}s${usedWall?'(録画時間)':''}・${moofs.length?'断片'+moofs.length:'普通形式'}${defrag?'('+defrag+')':''}・修正${changed}
 直す前：${raw.join(' ')}${elstInfo.length?' 編集'+elstInfo.join(','):''}`;
-    if(!changed)return blob;
+    if(!changed&&!rebuilt)return blob;
     return new Blob([buf],{type:blob.type});
   }catch(e){MP4INFO='解析エラー：'+e.message;return blob}
 }
@@ -1152,9 +1269,9 @@ async function startRec(){if(typeof MediaRecorder==='undefined'){toast('この�
     rs.start(rStart,rOff,rLen);
     r.music={mon,rs};r.musicT0=t0;r.musicFrom=c.start-pre;r.recAt=t0+pre;r.len=len;r.pre=pre;$('#recBar').classList.add('has');drawRecWave(a);
     const wait=(r.recAt-ctx.currentTime)*1000-25;await sleep(Math.max(0,wait));if(S.rec!==r)return;
-    mr.start(250);r.started=true;r.t0=performance.now();
+    mr.start();r.started=true;r.t0=performance.now();
     r.endTimer=setTimeout(()=>stopRec('end'),(len*1000)+120)}
-  else{$('#recBar').classList.remove('has');mr.start(250);r.started=true;r.t0=performance.now()}
+  else{$('#recBar').classList.remove('has');mr.start();r.started=true;r.t0=performance.now()}
   setTimeout(()=>{if(S.rec===r)r.thumb=grabThumb()},700)}
 function stopRec(why){const r=S.rec;if(!r)return;clearTimeout(r.endTimer);r.dur=r.started?(performance.now()-r.t0)/1000:0;r.why=why;
   if(r.music){try{r.music.mon.stop()}catch(e){}try{r.music.rs.stop()}catch(e){}}
@@ -1265,7 +1382,7 @@ function openCompare(a,b){closePlayerMedia();const m=$('#plMedia');m.className='
   PL.sync=setInterval(()=>{if(!vs[0].paused&&Math.abs(vs[0].currentTime-vs[1].currentTime)>.06)vs[1].currentTime=vs[0].currentTime;$('#cmpSeek').value=vs[0].currentTime/Math.min(a.dur,b.dur)*1000},250);
   $('#plActions').innerHTML='<button id="cmpBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M15 5l-7 7 7 7"/></svg>戻る</button>';$('#cmpBack').onclick=()=>openPlayer(a)}
 
-function fileName(t){const d=new Date(t.created),p=n=>String(n).padStart(2,'0');const ext=t.kind==='photo'?'jpg':(t.mime.includes('mp4')?'mp4':'webm');
+function fileName(t){const d=new Date(t.created),p=n=>String(n).padStart(2,'0');const ext=t.kind==='photo'?'jpg':(t.mime.includes('mp4')?'mp4':t.mime.includes('quicktime')?'mov':'webm');
   return `otsuuchicam_${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}${t.kind==='video'?'_'+t.fps+'p':''}.${ext}`}
 let DL=null;(async()=>{try{if(window.claude&&window.claude.use)DL=await window.claude.use('downloads')}catch(e){DL=null}})();
 async function markSaved(list){for(const t of list){t.saved=true;await DB.put('takes',t)}if(S.tab==='library')renderLibrary()}
@@ -1428,7 +1545,7 @@ $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation
 
 /* ================= offline ================= */
 // 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
-const APP_VERSION='0.9.2（11/08 23:50）';
+const APP_VERSION='0.9.3（11/08 23:59）';
 if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
   const hadController=!!navigator.serviceWorker.controller;let reloading=false;
   window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
