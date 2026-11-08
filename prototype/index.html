@@ -719,14 +719,26 @@ function trimWindow(mode){const c=T.clip,dur=T.tr.duration;
   if(mode==='in')return [Math.max(0,c.start-1.5),Math.min(c.end,c.start+3)];
   if(mode==='out')return [Math.max(c.start,c.end-3),c.end];
   const from=T.cue;return from<c.end?[from,c.end]:[from,dur]}
-function playTrim(opts={mode:'cue'}){const ctx=ac(),buf=S.buffers.get(T.tr.id);let [st,to]=trimWindow(opts.mode);
+/**
+ * 曲データを、いま鳴らしている音声エンジンの音質（サンプルレート）に合わせたものを返す。
+ * 音声エンジンを作り直して音質が変わると、Safariは曲データの再生位置を正しく扱えないことがあるため、
+ * 先に変換しておく（1回変換したら使い回す）。
+ */
+const RB=new Map();
+async function bufForCtx(tr){const ctx=ac();const b=S.buffers.get(tr.id)||await ensureBuffer(tr);if(b.sampleRate===ctx.sampleRate)return b;
+  const k=tr.id+'@'+ctx.sampleRate;if(RB.has(k))return RB.get(k);
+  const oc=new OfflineAudioContext(b.numberOfChannels,Math.ceil(b.duration*ctx.sampleRate),ctx.sampleRate);
+  const s=oc.createBufferSource();s.buffer=b;s.connect(oc.destination);s.start(0);const r=await oc.startRendering();RB.set(k,r);return r}
+let trimSeq=0;
+async function playTrim(opts={mode:'cue'}){const my=++trimSeq;const buf=await bufForCtx(T.tr);if(my!==trimSeq||S.tab!=='trim')return;
+  const ctx=ac();let [st,to]=trimWindow(opts.mode);
   if(to-st<.05){st=T.clip.start;to=T.clip.end}
   const src=ctx.createBufferSource();src.buffer=buf;src.playbackRate.value=T.speed;src.connect(ctx.destination);
   const now=ctx.currentTime+.03;src.start(now,st,to-st);
   const o={src,startAt:now,from:st,opts};T.playing=o;
   src.onended=()=>{if(T.playing!==o)return;T.playing=null;if(T.loop&&S.tab==='trim')playTrim(opts);else{T.playhead=-1;setPlayIcon(false);drawWave();updateCue()}};
   setPlayIcon(true);const tick=()=>{if(T.playing!==o)return;T.playhead=o.from+(ctx.currentTime-o.startAt)*T.speed;drawWave();updateCue();requestAnimationFrame(tick)};tick()}
-function stopTrim(){if(T.playing){const p=T.playing;T.playing=null;try{p.src.stop()}catch(e){}}setPlayIcon(false)}
+function stopTrim(){trimSeq++;if(T.playing){const p=T.playing;T.playing=null;try{p.src.stop()}catch(e){}}setPlayIcon(false)}
 function setPlayIcon(on){$('#trimPlay').innerHTML=on?'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg>'}
 $('#trimPlay').onclick=()=>{if(T.playing){stopTrim();T.playhead=-1;drawWave();updateCue()}else{freshAudio();playTrim({mode:'cue'})}};
 $('#chkIn').onclick=()=>{stopTrim();freshAudio();playTrim({mode:'in'})};
@@ -1036,7 +1048,7 @@ function beep(f){try{const c=ac(),o=c.createOscillator(),g=c.createGain();o.freq
 $('#recBtn').onclick=async()=>{if(!S.rec&&!S.counting&&S.mode==='video')freshAudio();else ac();if(S.mode==='photo')return takePhoto();
   if(S.counting){S.cancelCd=true;S.contStop=true;return}if(S.rec){S.contStop=true;return stopRec('user')}S.contStop=false;startRec()};
 async function startRec(){if(typeof MediaRecorder==='undefined'){toast('このブラウザは録画に対応していません');return}
-  const a=getActiveClip();if(a){try{await ensureBuffer(a.tr)}catch(e){toast('音源を読み込めませんでした');return}}
+  const a=getActiveClip();if(a){try{await ensureBuffer(a.tr);await bufForCtx(a.tr)}catch(e){toast('音源を読み込めませんでした');return}}
   ppSel=null;renderPro();$('#tabbar').classList.add('hide');app.classList.add('recording');
   if(ST.countdown){const ok=await countdown(ST.countdown);if(!ok){app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}}
   const vt=videoTrackForRecording();if(!vt){toast('映像を取得できませんでした');app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}
@@ -1045,7 +1057,8 @@ async function startRec(){if(typeof MediaRecorder==='undefined'){toast('この�
   const r={mr,chunks:[],mime:mr.mimeType||mime,clip:a,t0:0,dur:0,thumb:null,started:false,isSample:a&&a.tr.isSample,fps:ST.fps,aspect:ASP()};S.rec=r;
   mr.ondataavailable=e=>{if(e.data&&e.data.size)r.chunks.push(e.data)};
   mr.onstop=()=>finishRec(r);
-  if(a){const c=a.c,buf=S.buffers.get(a.tr.id),pre=Math.min(c.preroll||0,c.start),len=c.end-c.start,t0=ctx.currentTime+.15,sync=(ST.syncMs||0)/1000;
+  const musicBuf=a?await bufForCtx(a.tr):null;if(a&&S.rec!==r)return;
+  if(a){const c=a.c,buf=musicBuf,pre=Math.min(c.preroll||0,c.start),len=c.end-c.start,t0=ctx.currentTime+.15,sync=(ST.syncMs||0)/1000;
     // monitor (speaker) path
     const mon=ctx.createBufferSource();mon.buffer=buf;const mg=ctx.createGain();mg.gain.value=ST.monitorVol;mon.connect(mg).connect(ctx.destination);
     mon.start(t0,c.start-pre,pre+len);
@@ -1329,7 +1342,7 @@ $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation
 
 /* ================= offline ================= */
 // 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
-const APP_VERSION='0.5（11/08 21:00）';
+const APP_VERSION='0.6（11/08 21:30）';
 if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
   const hadController=!!navigator.serviceWorker.controller;let reloading=false;
   window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
