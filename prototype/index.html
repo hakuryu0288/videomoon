@@ -1040,71 +1040,80 @@ $('#lastThumb').onclick=()=>showScreen('library');
  * 実際のフレームの長さを合計して、ヘッダー（mvhd / tkhd / mdhd / mehd）に正しい長さを書き込む。
  */
 async function fixMp4Duration(blob,fallbackSec){MP4INFO='';
-  if(!blob||!/mp4/i.test(blob.type||''))return blob;
+  if(!blob||!/mp4|quicktime/i.test(blob.type||''))return blob;
   let buf;try{buf=new Uint8Array(await blob.arrayBuffer())}catch(e){return blob}
   const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
   const typ=o=>String.fromCharCode(buf[o+4],buf[o+5],buf[o+6],buf[o+7]);
   const each=(start,end,cb)=>{let o=start;while(o+8<=end){let size=dv.getUint32(o),hdr=8;
       if(size===1){size=Number(dv.getBigUint64(o+8));hdr=16}else if(size===0)size=end-o;
       if(size<hdr||o+size>end)break;cb(o,size,typ(o),hdr);o+=size}};
-  const u64=(o)=>Number(dv.getBigUint64(o));
+  const rd=(o,is64)=>is64?Number(dv.getBigUint64(o)):dv.getUint32(o);
+  const bad=(v,is64)=>v===0||v===0xFFFFFFFF||(is64&&v>=Number.MAX_SAFE_INTEGER);
   try{
-    let moov=null;const moofs=[];
-    each(0,buf.length,(o,sz,t,h)=>{if(t==='moov')moov={o,sz,h};else if(t==='moof')moofs.push({o,sz,h})});
-    if(!moov)return blob;
-    let mvhd=-1,mehd=-1;const tracks={},trexDur={};
+    const top=[];let moov=null;const moofs=[];
+    each(0,buf.length,(o,sz,t,h)=>{top.push(t);if(t==='moov')moov={o,sz,h};else if(t==='moof')moofs.push({o,sz,h})});
+    if(!moov){MP4INFO='moovなし：'+top.join(',');return blob}
+    let mvhd=-1,mehd=-1;const tracks=[],trexDur={};
     each(moov.o+moov.h,moov.o+moov.sz,(o,sz,t,h)=>{
       if(t==='mvhd')mvhd=o;
       else if(t==='mvex')each(o+h,o+sz,(o2,sz2,t2)=>{if(t2==='mehd')mehd=o2;if(t2==='trex')trexDur[dv.getUint32(o2+12)]=dv.getUint32(o2+20)});
-      else if(t==='trak'){const tk={tkhd:-1,mdhd:-1,elst:-1,sum:0};
-        each(o+h,o+sz,(o2,sz2,t2,h2)=>{if(t2==='tkhd')tk.tkhd=o2;if(t2==='mdia')each(o2+h2,o2+sz2,(o3,sz3,t3,h3)=>{if(t3==='mdhd')tk.mdhd=o3;
+      else if(t==='trak'){const tk={tkhd:-1,mdhd:-1,elst:-1,stts:-1,frag:0};
+        each(o+h,o+sz,(o2,sz2,t2,h2)=>{if(t2==='tkhd')tk.tkhd=o2;
+          if(t2==='edts')each(o2+h2,o2+sz2,(o3,sz3,t3)=>{if(t3==='elst')tk.elst=o3});
+          if(t2==='mdia')each(o2+h2,o2+sz2,(o3,sz3,t3,h3)=>{if(t3==='mdhd')tk.mdhd=o3;
             if(t3==='hdlr')tk.kind=String.fromCharCode(buf[o3+16],buf[o3+17],buf[o3+18],buf[o3+19]);
-            if(t3==='minf')each(o3+h3,o3+sz3,(o4,sz4,t4,h4)=>{if(t4==='stbl')each(o4+h4,o4+sz4,(o5,sz5,t5)=>{if(t5==='stsd'){const e=o5+16;
-              tk.codec=String.fromCharCode(buf[e+4],buf[e+5],buf[e+6],buf[e+7]);if(tk.kind==='soun')tk.rate=dv.getUint32(e+32)>>>16}})})});
-          if(t2==='edts')each(o2+h2,o2+sz2,(o3,sz3,t3)=>{if(t3==='elst')tk.elst=o3})});
+            if(t3==='minf')each(o3+h3,o3+sz3,(o4,sz4,t4,h4)=>{if(t4==='stbl')each(o4+h4,o4+sz4,(o5,sz5,t5)=>{
+              if(t5==='stts')tk.stts=o5;
+              if(t5==='stsd'){const e=o5+16;tk.codec=String.fromCharCode(buf[e+4],buf[e+5],buf[e+6],buf[e+7]);if(tk.kind==='soun')tk.rate=dv.getUint32(e+32)>>>16}})})})});
         if(tk.tkhd<0||tk.mdhd<0)return;
-        tk.id=dv.getUint32(tk.tkhd+(buf[tk.tkhd+8]===1?28:20));
-        tk.ts=dv.getUint32(tk.mdhd+(buf[tk.mdhd+8]===1?28:20));
-        tracks[tk.id]=tk}});
-    if(mvhd<0)return blob;
+        tk.id=dv.getUint32(tk.tkhd+(buf[tk.tkhd+8]===1?28:20));tk.ts=dv.getUint32(tk.mdhd+(buf[tk.mdhd+8]===1?28:20));
+        // 普通のMP4：サンプル表（stts）から長さを計算
+        tk.stbl=0;if(tk.stts>=0){const n=dv.getUint32(tk.stts+12);for(let i=0;i<n;i++)tk.stbl+=dv.getUint32(tk.stts+16+i*8)*dv.getUint32(tk.stts+20+i*8)}
+        tracks.push(tk)}});
+    if(mvhd<0){MP4INFO='mvhdなし';return blob}
+    const byId={};for(const tk of tracks)byId[tk.id]=tk;
     const mv1=buf[mvhd+8]===1,mvTs=dv.getUint32(mvhd+(mv1?28:20));
-    // 断片（moof）ごとのサンプルの長さを合計
+    // 細切れのMP4：断片（moof）ごとのサンプルの長さを合計
     for(const m of moofs)each(m.o+m.h,m.o+m.sz,(o,sz,t,h)=>{if(t!=='traf')return;let id=null,def=null;
       each(o+h,o+sz,(o2,sz2,t2)=>{
-        if(t2==='tfhd'){const fl=dv.getUint32(o2+8)&0xffffff;id=dv.getUint32(o2+12);let p=o2+16;
-          if(fl&1)p+=8;if(fl&2)p+=4;if(fl&8)def=dv.getUint32(p)}
-        else if(t2==='trun'&&id!=null&&tracks[id]){const fl=dv.getUint32(o2+8)&0xffffff,n=dv.getUint32(o2+12);let p=o2+16;
+        if(t2==='tfhd'){const fl=dv.getUint32(o2+8)&0xffffff;id=dv.getUint32(o2+12);let p=o2+16;if(fl&1)p+=8;if(fl&2)p+=4;if(fl&8)def=dv.getUint32(p)}
+        else if(t2==='trun'&&id!=null&&byId[id]){const fl=dv.getUint32(o2+8)&0xffffff,n=dv.getUint32(o2+12);let p=o2+16;
           if(fl&1)p+=4;if(fl&4)p+=4;const per=((fl&0x100)?4:0)+((fl&0x200)?4:0)+((fl&0x400)?4:0)+((fl&0x800)?4:0);
-          if(fl&0x100){for(let i=0;i<n;i++)tracks[id].sum+=dv.getUint32(p+i*per)}
-          else tracks[id].sum+=n*(def??trexDur[id]??0)}})});
-    let movieSec=0;for(const id in tracks){const tk=tracks[id];tk.sec=tk.sum>0&&tk.ts?tk.sum/tk.ts:0;movieSec=Math.max(movieSec,tk.sec)}
-    // 計算した長さが実際の録画時間と大きく違うときは、録画時間を正とする
-    const trackInfo=Object.values(tracks).map(t=>`${t.kind==='soun'?'音声':t.kind==='vide'?'映像':'?'}${t.sec.toFixed(1)}s(${t.codec||'?'}${t.rate?' '+t.rate+'Hz':''} ts${t.ts})`).join(' / ');let usedWall=false;
-    if(fallbackSec>0&&(!(movieSec>0)||Math.abs(movieSec-fallbackSec)/fallbackSec>.08)){movieSec=fallbackSec;usedWall=true;for(const id in tracks)tracks[id].sec=fallbackSec}
-    if(!moofs.length){ // 普通のMP4：長さが不明（最大値/0）のときだけ直す
-      const cur=mv1?u64(mvhd+32):dv.getUint32(mvhd+24);if(cur!==0xFFFFFFFF&&cur!==0)return blob}
-    if(!(movieSec>0))movieSec=fallbackSec||0;if(!(movieSec>0))return blob;
+          if(fl&0x100){for(let i=0;i<n;i++)byId[id].frag+=dv.getUint32(p+i*per)}else byId[id].frag+=n*(def??trexDur[id]??0)}})});
+    let movieSec=0;for(const tk of tracks){tk.sec=tk.ts?(tk.frag+tk.stbl)/tk.ts:0;movieSec=Math.max(movieSec,tk.sec)}
+    let usedWall=false;
+    if(fallbackSec>0&&(!(movieSec>0)||Math.abs(movieSec-fallbackSec)/fallbackSec>.08)){movieSec=fallbackSec;usedWall=true}
+    for(const tk of tracks)if(!(tk.sec>0)||usedWall)tk.sec=movieSec;
+    if(!(movieSec>0)){MP4INFO='長さを計算できませんでした';return blob}
+    // 直す前の値（調査用）
+    const raw=[];const hx=v=>v===0xFFFFFFFF?'不明':(v/ (mvTs||1)).toFixed(1);
+    raw.push('mvhd'+hx(rd(mvhd+(mv1?32:24),mv1)));
+    let changed=0;
+    const fix=(o,is64,expect,ts)=>{const cur=rd(o,is64),want=Math.max(0,Math.round(expect*ts));
+      if(bad(cur,is64)||Math.abs(cur-want)>Math.max(2,want*.08)){if(is64)dv.setBigUint64(o,BigInt(want));else dv.setUint32(o,Math.min(want,0xFFFFFFFE));changed++}};
+    fix(mvhd+(mv1?32:24),mv1,movieSec,mvTs);
+    if(mehd>=0){const e1=buf[mehd+8]===1;raw.push('mehd'+hx(rd(mehd+12,e1)));fix(mehd+12,e1,movieSec,mvTs)}
     const elstInfo=[];
-    const put=(o,is64,v)=>{v=Math.max(0,Math.round(v));if(is64)dv.setBigUint64(o,BigInt(v));else dv.setUint32(o,Math.min(v,0xFFFFFFFE))};
-    put(mvhd+(mv1?32:24),mv1,movieSec*mvTs);
-    for(const id in tracks){const tk=tracks[id],sec=tk.sec||movieSec;
-      const t1=buf[tk.tkhd+8]===1;put(tk.tkhd+(t1?36:28),t1,sec*mvTs);
-      const d1=buf[tk.mdhd+8]===1;put(tk.mdhd+(d1?32:24),d1,sec*tk.ts);
-      // 編集リスト（elst）にも「長さ不明」が入っていることがある。不明な区間を実際の長さで埋める
-      if(tk.elst>=0){const e1=buf[tk.elst+8]===1,n=dv.getUint32(tk.elst+12),es=e1?20:12;let other=0;const unknown=[];
-        for(let i=0;i<n;i++){const q=tk.elst+16+i*es,d=e1?dv.getBigUint64(q):dv.getUint32(q);
-          const mt=e1?Number(dv.getBigInt64(q+8)):dv.getInt32(q+4);
-          const isUnknown=e1?(d===0xFFFFFFFFFFFFFFFFn):(d===0xFFFFFFFF);if(isUnknown)unknown.push({q,empty:mt===-1});else other+=Number(d)}
-        // 「長さ不明」の区間が複数あっても合計が実際の長さになるよう、残りの長さは最初の映像区間にだけ入れる
-        let rest=Math.max(0,sec*mvTs-other);
-        for(const u of unknown){if(u.empty){put(u.q,e1,0);continue}put(u.q,e1,rest);rest=0}
-        elstInfo.push(n+'区間/不明'+unknown.length)}}
-    if(mehd>=0){const e1=buf[mehd+8]===1;put(mehd+12,e1,movieSec*mvTs)}
-    MP4INFO=`${trackInfo}\n録画${(fallbackSec||0).toFixed(1)}s・保存${movieSec.toFixed(1)}s${usedWall?'(録画時間を採用)':''}・断片${moofs.length}・編集${elstInfo.join(',')||'なし'}`;
+    for(const tk of tracks){const t1=buf[tk.tkhd+8]===1,d1=buf[tk.mdhd+8]===1;
+      raw.push((tk.kind==='soun'?'音':'映')+'tkhd'+hx(rd(tk.tkhd+(t1?36:28),t1)));
+      fix(tk.tkhd+(t1?36:28),t1,tk.sec,mvTs);fix(tk.mdhd+(d1?32:24),d1,tk.sec,tk.ts);
+      if(tk.elst>=0){const e1=buf[tk.elst+8]===1,n=dv.getUint32(tk.elst+12),es=e1?20:12;const ents=[];
+        for(let i=0;i<n;i++){const q=tk.elst+16+i*es,d=rd(q,e1),mt=e1?Number(dv.getBigInt64(q+8)):dv.getInt32(q+4);ents.push({q,d,empty:mt===-1})}
+        elstInfo.push((tk.kind==='soun'?'音':'映')+ents.map(e=>e.empty?'空'+hx(e.d):hx(e.d)).join('+'));
+        // 編集リスト：空の区間はそのまま（不明なら0）、映像の区間の合計が実際の長さになるように最初の区間で調整
+        const emptySum=ents.filter(e=>e.empty&&!bad(e.d,e1)).reduce((a,e)=>a+e.d,0);
+        ents.filter(e=>e.empty&&bad(e.d,e1)).forEach(e=>{e1?dv.setBigUint64(e.q,0n):dv.setUint32(e.q,0);changed++});
+        const media=ents.filter(e=>!e.empty);
+        if(media.length){const want=Math.max(0,Math.round(tk.sec*mvTs));let total=media.reduce((a,e)=>a+(bad(e.d,e1)?0:e.d),0);
+          if(media.some(e=>bad(e.d,e1))||Math.abs(total-want)>Math.max(2,want*.08)){
+            media.forEach((e,i)=>{const v=i===0?want:0;e1?dv.setBigUint64(e.q,BigInt(v)):dv.setUint32(e.q,v)});changed++}}}}
+    MP4INFO=`${tracks.map(t=>`${t.kind==='soun'?'音声':t.kind==='vide'?'映像':'?'}${t.sec.toFixed(1)}s(${t.codec||'?'}${t.rate?' '+t.rate+'Hz':''})`).join(' / ')}
+録画${(fallbackSec||0).toFixed(1)}s→保存${movieSec.toFixed(1)}s${usedWall?'(録画時間)':''}・${moofs.length?'断片'+moofs.length:'普通形式'}・修正${changed}
+直す前：${raw.join(' ')}${elstInfo.length?' 編集'+elstInfo.join(','):''}`;
+    if(!changed)return blob;
     return new Blob([buf],{type:blob.type});
-  }catch(e){return blob}
+  }catch(e){MP4INFO='解析エラー：'+e.message;return blob}
 }
-
 let MP4INFO='';
 /* ================= recording ================= */
 function pickMime(){const c=['video/mp4;codecs=avc1.42E01F,mp4a.40.2','video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
@@ -1154,7 +1163,7 @@ async function finishRec(r){S.rec=null;setCanvasSize();layoutGuides();app.classL
   if(!r.started||!r.chunks.length||r.dur<.3){toast('録画が短すぎるため保存しませんでした');return}
   let blob=new Blob(r.chunks,{type:(r.mime||'video/webm').split(';')[0]});
   const rawBlob=blob;blob=await fixMp4Duration(blob,r.dur); // iPhoneで長さが「1,988時間」などになるのを防ぐ
-  const lenFixed=blob!==rawBlob,lenInfo=MP4INFO+`\n音声エンジン${AC?AC.sampleRate:'-'}Hz・${navigator.audioSession?'AudioSession:'+navigator.audioSession.type:'AudioSessionなし'}・${r.mime}`;
+  const lenFixed=blob!==rawBlob||/修正[1-9]/.test(MP4INFO),lenInfo=MP4INFO+`\n音声エンジン${AC?AC.sampleRate:'-'}Hz・${navigator.audioSession?'AudioSession:'+navigator.audioSession.type:'AudioSessionなし'}・${r.mime}`;
   const a=r.clip;const n=S.takes.filter(t=>t.kind==='video'&&a&&t.clipId===a.c.id).length+1;
   const take={id:uid(),kind:'video',blob,mime:blob.type,thumb:r.thumb||grabThumb(),created:Date.now(),dur:r.dur,fps:r.fps,res:ST.res,aspect:r.aspect,
     title:a?`${a.c.name} ・ テイク ${n}`:'動画',lenFixed,lenInfo,blurUsed:ST.blur,trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:VS.mode==='demo'?ST.scene:null};
@@ -1419,7 +1428,7 @@ $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation
 
 /* ================= offline ================= */
 // 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
-const APP_VERSION='0.9.1（11/08 23:20）';
+const APP_VERSION='0.9.2（11/08 23:50）';
 if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
   const hadController=!!navigator.serviceWorker.controller;let reloading=false;
   window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
