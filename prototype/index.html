@@ -280,7 +280,7 @@ svg{display:block}
 .pl-top{display:flex;align-items:center;gap:10px;padding:calc(var(--sat) + 6px) 12px 8px}
 .pl-top .ttl{flex:1;min-width:0}
 .pl-top .ttl b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pl-top .ttl span{font-size:12px;color:var(--mu);font-family:var(--num)}
+.pl-top .ttl span{font-size:12px;color:var(--mu);font-family:var(--num);white-space:pre-line;display:block}
 .iconBtn{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--s1)}
 .iconBtn svg{width:20px;height:20px}
 .pl-media{flex:1;position:relative;display:flex;gap:4px;min-height:0}
@@ -567,7 +567,10 @@ function aspLabel(){return ST.aspect==='auto'?'自動':ASP()==='16:9'?'横':'縦
 
 /* ================= audio ================= */
 let AC=null;
-function ac(){if(!AC){const C=window.AudioContext||window.webkitAudioContext;AC=new C({latencyHint:'interactive'})}if(AC.state==='suspended')AC.resume();return AC}
+// iPhoneのSafari：音を「音楽再生」として扱わせる。カメラ使用中でも画面収録に音が入り、マナーモードでも鳴るようにする
+function setPlaybackSession(){try{if(navigator.audioSession&&navigator.audioSession.type!=='playback')navigator.audioSession.type='playback'}catch(e){}}
+setPlaybackSession();
+function ac(){setPlaybackSession();if(!AC){const C=window.AudioContext||window.webkitAudioContext;AC=new C({latencyHint:'interactive'})}if(AC.state==='suspended')AC.resume();return AC}
 document.addEventListener('pointerdown',()=>{if(AC&&AC.state==='suspended')AC.resume()},{passive:true});
 /**
  * iPhoneのSafariでは、画面収録やイヤホンの抜き差しなどで端末の音声設定（サンプルレート）が途中で変わると、
@@ -1036,7 +1039,7 @@ $('#lastThumb').onclick=()=>showScreen('library');
  * 長さの欄が「不明（最大値）」のままなので、写真アプリで1,988時間などと表示される。
  * 実際のフレームの長さを合計して、ヘッダー（mvhd / tkhd / mdhd / mehd）に正しい長さを書き込む。
  */
-async function fixMp4Duration(blob,fallbackSec){
+async function fixMp4Duration(blob,fallbackSec){MP4INFO='';
   if(!blob||!/mp4/i.test(blob.type||''))return blob;
   let buf;try{buf=new Uint8Array(await blob.arrayBuffer())}catch(e){return blob}
   const dv=new DataView(buf.buffer,buf.byteOffset,buf.byteLength);
@@ -1072,9 +1075,13 @@ async function fixMp4Duration(blob,fallbackSec){
           if(fl&0x100){for(let i=0;i<n;i++)tracks[id].sum+=dv.getUint32(p+i*per)}
           else tracks[id].sum+=n*(def??trexDur[id]??0)}})});
     let movieSec=0;for(const id in tracks){const tk=tracks[id];tk.sec=tk.sum>0&&tk.ts?tk.sum/tk.ts:0;movieSec=Math.max(movieSec,tk.sec)}
+    // 計算した長さが実際の録画時間と大きく違うときは、録画時間を正とする
+    const trackInfo=Object.values(tracks).map(t=>t.sec.toFixed(1)).join('/');let usedWall=false;
+    if(fallbackSec>0&&(!(movieSec>0)||Math.abs(movieSec-fallbackSec)/fallbackSec>.08)){movieSec=fallbackSec;usedWall=true;for(const id in tracks)tracks[id].sec=fallbackSec}
     if(!moofs.length){ // 普通のMP4：長さが不明（最大値/0）のときだけ直す
       const cur=mv1?u64(mvhd+32):dv.getUint32(mvhd+24);if(cur!==0xFFFFFFFF&&cur!==0)return blob}
     if(!(movieSec>0))movieSec=fallbackSec||0;if(!(movieSec>0))return blob;
+    const elstInfo=[];
     const put=(o,is64,v)=>{v=Math.max(0,Math.round(v));if(is64)dv.setBigUint64(o,BigInt(v));else dv.setUint32(o,Math.min(v,0xFFFFFFFE))};
     put(mvhd+(mv1?32:24),mv1,movieSec*mvTs);
     for(const id in tracks){const tk=tracks[id],sec=tk.sec||movieSec;
@@ -1083,13 +1090,19 @@ async function fixMp4Duration(blob,fallbackSec){
       // 編集リスト（elst）にも「長さ不明」が入っていることがある。不明な区間を実際の長さで埋める
       if(tk.elst>=0){const e1=buf[tk.elst+8]===1,n=dv.getUint32(tk.elst+12),es=e1?20:12;let other=0;const unknown=[];
         for(let i=0;i<n;i++){const q=tk.elst+16+i*es,d=e1?dv.getBigUint64(q):dv.getUint32(q);
-          const isUnknown=e1?(d===0xFFFFFFFFFFFFFFFFn):(d===0xFFFFFFFF);if(isUnknown)unknown.push(q);else other+=Number(d)}
-        for(const q of unknown)put(q,e1,Math.max(0,sec*mvTs-other))}}
+          const mt=e1?Number(dv.getBigInt64(q+8)):dv.getInt32(q+4);
+          const isUnknown=e1?(d===0xFFFFFFFFFFFFFFFFn):(d===0xFFFFFFFF);if(isUnknown)unknown.push({q,empty:mt===-1});else other+=Number(d)}
+        // 「長さ不明」の区間が複数あっても合計が実際の長さになるよう、残りの長さは最初の映像区間にだけ入れる
+        let rest=Math.max(0,sec*mvTs-other);
+        for(const u of unknown){if(u.empty){put(u.q,e1,0);continue}put(u.q,e1,rest);rest=0}
+        elstInfo.push(n+'区間/不明'+unknown.length)}}
     if(mehd>=0){const e1=buf[mehd+8]===1;put(mehd+12,e1,movieSec*mvTs)}
+    MP4INFO=`トラック${trackInfo}s・録画${(fallbackSec||0).toFixed(1)}s・保存${movieSec.toFixed(1)}s${usedWall?'(録画時間を採用)':''}・断片${moofs.length}・編集${elstInfo.join(',')||'なし'}`;
     return new Blob([buf],{type:blob.type});
   }catch(e){return blob}
 }
 
+let MP4INFO='';
 /* ================= recording ================= */
 function pickMime(){const c=['video/mp4;codecs=avc1.42E01F,mp4a.40.2','video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
   for(const m of c){try{if(MediaRecorder.isTypeSupported(m))return m}catch(e){}}return ''}
@@ -1138,10 +1151,10 @@ async function finishRec(r){S.rec=null;setCanvasSize();layoutGuides();app.classL
   if(!r.started||!r.chunks.length||r.dur<.3){toast('録画が短すぎるため保存しませんでした');return}
   let blob=new Blob(r.chunks,{type:(r.mime||'video/webm').split(';')[0]});
   const rawBlob=blob;blob=await fixMp4Duration(blob,r.dur); // iPhoneで長さが「1,988時間」などになるのを防ぐ
-  const lenFixed=blob!==rawBlob;
+  const lenFixed=blob!==rawBlob,lenInfo=MP4INFO;
   const a=r.clip;const n=S.takes.filter(t=>t.kind==='video'&&a&&t.clipId===a.c.id).length+1;
   const take={id:uid(),kind:'video',blob,mime:blob.type,thumb:r.thumb||grabThumb(),created:Date.now(),dur:r.dur,fps:r.fps,res:ST.res,aspect:r.aspect,
-    title:a?`${a.c.name} ・ テイク ${n}`:'動画',lenFixed,trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:VS.mode==='demo'?ST.scene:null};
+    title:a?`${a.c.name} ・ テイク ${n}`:'動画',lenFixed,lenInfo,blurUsed:ST.blur,trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:VS.mode==='demo'?ST.scene:null};
   S.takes.unshift(take);await DB.put('takes',take);updateLastThumb();askPersist();
   if(ST.continuous&&!S.contStop){toast(`テイク ${n} を保存。続けて撮影します`);await sleep(1200);if(S.tab==='camera'&&!S.rec&&!S.contStop)startRec();return}
   if(ST.autoReview)showReview(take);else toast('ライブラリに保存しました')}
@@ -1208,7 +1221,7 @@ async function deleteTake(id){S.takes=S.takes.filter(t=>t.id!==id);await DB.del(
 const PL={urls:[]};
 function openPlayer(t){closePlayerMedia();const m=$('#plMedia');m.className='pl-media';$('#plCtrl').classList.remove('on');
   $('#plTitle').textContent=t.title;const d=new Date(t.created);
-  $('#plMeta').textContent=(t.kind==='video'?`${t.dur.toFixed(1)}秒 ・ ${t.fps}fps ・ ${t.res}p ・ ${t.trackName||'音声なし'}`:`写真 ・ ${t.res} ・ ${d.toLocaleString('ja-JP')}`)+` ・ ${fmtBytes(t.blob.size)}`+(t.kind==='video'&&t.mime&&t.mime.includes('mp4')?(t.lenFixed?' ・ 長さ補正済み':' ・ 長さ補正なし'):'');
+  $('#plMeta').textContent=(t.kind==='video'?`${t.dur.toFixed(1)}秒 ・ ${t.fps}fps ・ ${t.res}p ・ ${t.trackName||'音声なし'}`:`写真 ・ ${t.res} ・ ${d.toLocaleString('ja-JP')}`)+` ・ ${fmtBytes(t.blob.size)}`+(t.kind==='video'&&t.mime&&t.mime.includes('mp4')?(t.lenFixed?' ・ 長さ補正済み':' ・ 長さ補正なし'):'')+(t.lenInfo?`\n${t.lenInfo}${t.blurUsed?'・ブラー'+t.blurUsed:''}`:'');
   const url=URL.createObjectURL(t.blob);PL.urls.push(url);
   if(t.kind==='video'){const v=document.createElement('video');v.src=url;v.controls=true;v.playsInline=true;v.loop=true;m.appendChild(v);fixDuration(v);v.play().catch(()=>{})}
   else{const i=document.createElement('img');i.src=url;m.appendChild(i)}
@@ -1402,7 +1415,7 @@ $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation
 
 /* ================= offline ================= */
 // 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
-const APP_VERSION='0.8（11/08 22:30）';
+const APP_VERSION='0.9（11/08 23:00）';
 if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
   const hadController=!!navigator.serviceWorker.controller;let reloading=false;
   window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
