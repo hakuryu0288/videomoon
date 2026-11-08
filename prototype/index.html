@@ -566,6 +566,12 @@ function aspLabel(){return ST.aspect==='auto'?'自動':ASP()==='16:9'?'横':'縦
 let AC=null;
 function ac(){if(!AC){const C=window.AudioContext||window.webkitAudioContext;AC=new C({latencyHint:'interactive'})}if(AC.state==='suspended')AC.resume();return AC}
 document.addEventListener('pointerdown',()=>{if(AC&&AC.state==='suspended')AC.resume()},{passive:true});
+/**
+ * iPhoneのSafariでは、画面収録やイヤホンの抜き差しなどで端末の音声設定（サンプルレート）が途中で変わると、
+ * それ以降のWeb Audioの音が乱れる（WebKitの既知の不具合）。録画・試聴を始めるたびに音声エンジンを作り直して、
+ * その時点の設定に合わせる。iOSではタップの処理の中で作る必要があるので、ボタンのクリック時に呼ぶ。
+ */
+function freshAudio(){if(S.rec||T.playing||S.counting)return ac();if(AC){try{AC.close()}catch(e){}AC=null}return ac()}
 
 function computePeaks(buf){const hop=Math.round(buf.sampleRate/100),n=Math.ceil(buf.length/hop),p=new Float32Array(n);
   const a=buf.getChannelData(0),b=buf.numberOfChannels>1?buf.getChannelData(1):a;
@@ -722,9 +728,9 @@ function playTrim(opts={mode:'cue'}){const ctx=ac(),buf=S.buffers.get(T.tr.id);l
   setPlayIcon(true);const tick=()=>{if(T.playing!==o)return;T.playhead=o.from+(ctx.currentTime-o.startAt)*T.speed;drawWave();updateCue();requestAnimationFrame(tick)};tick()}
 function stopTrim(){if(T.playing){const p=T.playing;T.playing=null;try{p.src.stop()}catch(e){}}setPlayIcon(false)}
 function setPlayIcon(on){$('#trimPlay').innerHTML=on?'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>':'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg>'}
-$('#trimPlay').onclick=()=>{if(T.playing){stopTrim();T.playhead=-1;drawWave();updateCue()}else playTrim({mode:'cue'})};
-$('#chkIn').onclick=()=>{stopTrim();playTrim({mode:'in'})};
-$('#chkOut').onclick=()=>{stopTrim();playTrim({mode:'out'})};
+$('#trimPlay').onclick=()=>{if(T.playing){stopTrim();T.playhead=-1;drawWave();updateCue()}else{freshAudio();playTrim({mode:'cue'})}};
+$('#chkIn').onclick=()=>{stopTrim();freshAudio();playTrim({mode:'in'})};
+$('#chkOut').onclick=()=>{stopTrim();freshAudio();playTrim({mode:'out'})};
 const herePos=()=>T.playhead>=0?T.playhead:T.cue;
 $('#setInHere').onclick=()=>{T.clip.start=clamp(herePos(),0,T.clip.end-.5);T.clip.preroll=Math.min(T.clip.preroll,T.clip.start);syncTrimUI()};
 $('#setOutHere').onclick=()=>{T.clip.end=clamp(herePos(),T.clip.start+.5,T.tr.duration);syncTrimUI()};
@@ -1021,7 +1027,7 @@ async function countdown(n){S.counting=true;S.cancelCd=false;const el=$('#countd
   S.counting=false;el.classList.remove('show');return !S.cancelCd}
 function beep(f){try{const c=ac(),o=c.createOscillator(),g=c.createGain();o.frequency.value=f;g.gain.setValueAtTime(.0001,c.currentTime);g.gain.exponentialRampToValueAtTime(.15,c.currentTime+.01);g.gain.exponentialRampToValueAtTime(.0001,c.currentTime+.15);o.connect(g).connect(c.destination);o.start();o.stop(c.currentTime+.2)}catch(e){}}
 
-$('#recBtn').onclick=async()=>{ac();if(S.mode==='photo')return takePhoto();
+$('#recBtn').onclick=async()=>{if(!S.rec&&!S.counting&&S.mode==='video')freshAudio();else ac();if(S.mode==='photo')return takePhoto();
   if(S.counting){S.cancelCd=true;S.contStop=true;return}if(S.rec){S.contStop=true;return stopRec('user')}S.contStop=false;startRec()};
 async function startRec(){if(typeof MediaRecorder==='undefined'){toast('このブラウザは録画に対応していません');return}
   const a=getActiveClip();if(a){try{await ensureBuffer(a.tr)}catch(e){toast('音源を読み込めませんでした');return}}
