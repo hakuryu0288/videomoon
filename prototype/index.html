@@ -144,7 +144,7 @@ svg{display:block}
 #proStrip{display:flex;margin:0 10px;border-radius:12px;background:rgba(11,11,16,.7);border:1px solid rgba(42,42,56,.8);overflow:hidden}
 .pc{flex:1;padding:6px 0 5px;text-align:center;border-right:1px solid rgba(42,42,56,.6);position:relative}
 .pc:last-child{border-right:0}
-.pc .l{font-size:10.5px;color:var(--mu);display:block}
+.pc .l{white-space:nowrap;font-size:10.5px;color:var(--mu);display:block}
 .pc .v{font-family:var(--num);font-size:16px;font-weight:600;display:block;line-height:1.2}
 .pc .l .a{font-family:var(--num);font-size:10px;color:var(--ok);margin-left:3px}
 .pc.sel{background:rgba(255,138,0,.12)}
@@ -370,6 +370,7 @@ svg{display:block}
       <div id="viewfinder">
         <canvas id="demoCv" width="720" height="1280"></canvas>
         <video id="camVideo" playsinline muted autoplay></video>
+        <canvas id="blurCv" width="720" height="1280" style="display:none"></canvas>
         <canvas id="overlayCv" width="180" height="320"></canvas>
         <div id="gridLines"><i></i><i></i><i></i><i></i></div>
         <div id="countdown"></div>
@@ -408,6 +409,7 @@ svg{display:block}
           <button class="pc" data-p="wb"><span class="l">WB<span class="a" id="aWb">A</span></span><span class="v" id="vWb">5600K</span></button>
           <button class="pc" data-p="ev"><span class="l">露出補正</span><span class="v" id="vEv">±0</span></button>
           <button class="pc" data-p="focus"><span class="l">フォーカス</span><span class="v" id="vFocus">AF</span></button>
+          <button class="pc" data-p="blur"><span class="l">ブラー</span><span class="v" id="vBlur">オフ</span></button>
         </div>
         </div>
         <div class="cam-shoot">
@@ -551,7 +553,7 @@ const LS={get(k,d){try{const v=localStorage.getItem('vm_'+k);return v?JSON.parse
 
 /* ================= state ================= */
 const ST=Object.assign({fps:60,res:'1080',aspect:'auto',stab:true,flicker:50,countdown:3,grid:true,zebra:false,zebraLv:95,peaking:false,histo:true,
-  mirrorPreview:true,mirrorSave:false,lens:'wide',monitorVol:0.9,syncMs:0,autoReview:true,continuous:false,codec:'H.264',scene:'stage',facing:'back'},LS.get('settings',{}));
+  mirrorPreview:true,mirrorSave:false,lens:'wide',blur:0,monitorVol:0.9,syncMs:0,autoReview:true,continuous:false,codec:'H.264',scene:'stage',facing:'back'},LS.get('settings',{}));
 const PRO={ae:true,iso:1600,shut:120,awb:true,wb:5600,ev:0,af:true,focus:0.7};
 const S={tab:'camera',mode:'video',tracks:[],takes:[],activeClip:LS.get('activeClip',null),buffers:new Map(),peaks:new Map(),
   rec:null,counting:false,libFilter:'all',selecting:false,picked:new Set()};
@@ -868,9 +870,26 @@ function renderScene(t){const W=demoCv.width,H=demoCv.height,c=dc,sc=ST.scene,la
 const VS={mode:'demo',stream:null,camStream:null,last:0,frames:[],raf:0,running:false,track:null,caps:null};
 function setCanvasSize(){const land=ASP()==='16:9';const w=land?1280:720,h=land?720:1280;if(demoCv.width!==w){demoCv.width=w;demoCv.height=h}VS.stream=null}
 function getDemoStream(){if(!VS.stream||VS.streamFps!==ST.fps){try{VS.stream=demoCv.captureStream(ST.fps);VS.streamFps=ST.fps}catch(e){VS.stream=null}}return VS.stream}
+/* ================= モーションブラー ================= */
+// iPhoneのブラウザではシャッター速度を変えられないので、前のフレームを少しずつ重ねて動きに尾を引かせる。
+// プレビューにも同じ処理をかけ、見たまま録画する。強いほど残像が長い。
+const BLUR_A=[1,.62,.45,.3],BLUR_NAME=['オフ','弱','中','強'];
+const blurCv=$('#blurCv'),bctx=blurCv.getContext('2d');let blurFirst=true;VS.blurFrames=[];
+function blurStep(src){const w=src.videoWidth||src.width,h=src.videoHeight||src.height;if(!w||!h)return;
+  const k=Math.min(1,1920/Math.max(w,h)),W=Math.round(w*k),H=Math.round(h*k);
+  if(blurCv.width!==W||blurCv.height!==H){blurCv.width=W;blurCv.height=H;blurFirst=true;VS.blurStream=null}
+  bctx.globalAlpha=blurFirst?1:BLUR_A[ST.blur];bctx.drawImage(src,0,0,W,H);bctx.globalAlpha=1;blurFirst=false;
+  const now=performance.now();VS.blurFrames.push(now);while(VS.blurFrames.length&&now-VS.blurFrames[0]>1000)VS.blurFrames.shift()}
+function blurOn(){return ST.blur>0}
+function getBlurStream(){if(!VS.blurStream||VS.blurStreamFps!==ST.fps){try{VS.blurStream=blurCv.captureStream(ST.fps);VS.blurStreamFps=ST.fps}catch(e){VS.blurStream=null}}return VS.blurStream}
+function applyBlurDisplay(){const on=blurOn();blurCv.style.display=on?'block':'none';
+  $('#camVideo').style.opacity=on?0:1; // 映像は止めずに見えなくするだけ（止めるとフレームが届かなくなる）
+  demoCv.style.visibility=on?'hidden':'visible';blurFirst=true}
+
 function loop(ts){VS.raf=requestAnimationFrame(loop);const minDt=1000/ST.fps-2;if(ts-VS.last<minDt)return;VS.last=ts;
   VS.frames.push(ts);while(VS.frames.length&&ts-VS.frames[0]>1000)VS.frames.shift();
-  if(VS.mode==='demo')renderScene(ts/1000);
+  if(VS.mode==='demo'){renderScene(ts/1000);if(blurOn())blurStep(demoCv)}
+  else if(blurOn()&&!VS.rvfc)blurStep($('#camVideo'));
   updateRecUI()}
 function startLoop(){if(VS.running)return;VS.running=true;VS.raf=requestAnimationFrame(loop);startAnalysis()}
 function stopLoop(){VS.running=false;cancelAnimationFrame(VS.raf);stopAnalysis()}
@@ -903,7 +922,7 @@ async function tryRealCamera(){if(EMBED||!navigator.mediaDevices||!navigator.med
   catch(e){return false}}
 // 実際にカメラから届いているフレーム数を数える（画面の描画回数ではなく）
 function startCamFpsCounter(v){if(!v.requestVideoFrameCallback||v._fpsOn)return;v._fpsOn=true;VS.camFrames=[];
-  const cb=(now)=>{VS.camFrames.push(now);while(VS.camFrames.length&&now-VS.camFrames[0]>1000)VS.camFrames.shift();v.requestVideoFrameCallback(cb)};v.requestVideoFrameCallback(cb)}
+  VS.rvfc=true;const cb=(now)=>{if(blurOn())blurStep(v);VS.camFrames.push(now);while(VS.camFrames.length&&now-VS.camFrames[0]>1000)VS.camFrames.shift();v.requestVideoFrameCallback(cb)};v.requestVideoFrameCallback(cb)}
 function updateLensChip(){const c=$('#chipLens'),ks=['ultra','wide','tele','auto'].filter(k=>VS.lenses&&VS.lenses[k]);
   const show=VS.mode==='real'&&ST.facing!=='front'&&ks.length>1;c.style.display=show?'inline-flex':'none';
   if(show)c.textContent=LENS_NAME[VS.lenses[ST.lens]?ST.lens:'wide']}
@@ -914,8 +933,8 @@ function applyRealConstraints(){if(VS.mode!=='real')return;const c=VS.caps||{},a
   if(c.focusMode)adv.focusMode=PRO.af?'continuous':'manual';if(!PRO.af&&c.focusDistance)adv.focusDistance=c.focusDistance.min+(c.focusDistance.max-c.focusDistance.min)*(1-PRO.focus);
   VS.track.applyConstraints({advanced:[adv]}).catch(()=>{});
   const native=!!(c.exposureMode||c.iso);$('#camVideo').style.filter=native?'':`brightness(${PRO.ae?Math.pow(2,PRO.ev*.5):clamp(gainNow(),.1,3)})`}
-function videoTrackForRecording(){if(VS.mode==='real')return VS.camStream.getVideoTracks()[0];const s=getDemoStream();return s?s.getVideoTracks()[0]:null}
-function sourceEl(){return VS.mode==='real'?$('#camVideo'):demoCv}
+function videoTrackForRecording(){if(blurOn()){const b=getBlurStream();if(b)return b.getVideoTracks()[0]}if(VS.mode==='real')return VS.camStream.getVideoTracks()[0];const s=getDemoStream();return s?s.getVideoTracks()[0]:null}
+function sourceEl(){return blurOn()?blurCv:VS.mode==='real'?$('#camVideo'):demoCv}
 
 /* ================= analysis: histogram / zebra / peaking ================= */
 const an=document.createElement('canvas');an.width=90;an.height=160;const anc=an.getContext('2d',{willReadFrequently:true});
@@ -943,7 +962,8 @@ function renderCamUI(){app.classList.toggle('photo-mode',S.mode==='photo');app.c
   $('#chipFps').textContent=ST.fps+'p';$('#chipRes').textContent=(ST.res==='4K'?'4K':ST.res)+' · '+aspLabel();$('#chipTimer').querySelector('span').textContent=ST.countdown?ST.countdown+'s':'オフ';
   $('#gridLines').classList.toggle('on',ST.grid);$('#histoBox').style.display=ST.histo?'block':'none';
   $('#demoTag span').textContent='デモ映像：'+SCENES[ST.scene].label;
-  $('#demoCv').style.transform=$('#camVideo').style.transform=(ST.facing==='front'&&ST.mirrorPreview)?'scaleX(-1)':'';
+  $('#demoCv').style.transform=$('#camVideo').style.transform=blurCv.style.transform=(ST.facing==='front'&&ST.mirrorPreview)?'scaleX(-1)':'';
+  if((blurCv.style.display==='block')!==blurOn())applyBlurDisplay();
   $('#overlayCv').style.transform=(ST.facing==='front'&&ST.mirrorPreview)?'scaleX(-1)':'';
   $('#demoCv').style.filter=PRO.af?'':`blur(${Math.abs(PRO.focus-.7)*9}px)`;
   $$('.modes button').forEach(b=>b.classList.toggle('on',b.dataset.mode===S.mode));
@@ -962,7 +982,7 @@ const PRESETS=[{id:'auto',name:'オート',f:()=>{PRO.ae=true;PRO.awb=true;PRO.a
  {id:'indoor',name:'屋内照明',f:()=>{PRO.ae=false;PRO.iso=640;PRO.shut=autoShutter();PRO.awb=false;PRO.wb=4000}},
  {id:'outdoor',name:'屋外',f:()=>{PRO.ae=false;PRO.iso=100;PRO.shut=snap(shutStops(),1000);PRO.awb=false;PRO.wb=5600}}];
 function renderPro(){const e=effExposure();$('#vIso').textContent=e.iso;$('#vShut').textContent='1/'+e.shut;$('#vWb').textContent=(PRO.awb?5600:PRO.wb)+'K';
-  $('#vEv').textContent=PRO.ae?(PRO.ev===0?'±0':(PRO.ev>0?'+':'−')+Math.abs(PRO.ev).toFixed(1)):'—';$('#vFocus').textContent=PRO.af?'AF':'MF';
+  $('#vEv').textContent=PRO.ae?(PRO.ev===0?'±0':(PRO.ev>0?'+':'−')+Math.abs(PRO.ev).toFixed(1)):'—';$('#vFocus').textContent=PRO.af?'AF':'MF';$('#vBlur').textContent=BLUR_NAME[ST.blur];$('#vBlur').style.color=ST.blur?'var(--moon)':'';
   $('#aIso').textContent=$('#aShut').textContent=PRO.ae?'A':'M';$('#aIso').style.color=$('#aShut').style.color=PRO.ae?'var(--ok)':'var(--moon)';
   $('#aWb').textContent=PRO.awb?'A':'M';$('#aWb').style.color=PRO.awb?'var(--ok)':'var(--moon)';
   $$('.pc').forEach(b=>b.classList.toggle('sel',b.dataset.p===ppSel));$('.pc[data-p=ev]').classList.toggle('off',!PRO.ae);
@@ -975,11 +995,12 @@ function renderPro(){const e=effExposure();$('#vIso').textContent=e.iso;$('#vShu
   if(ppSel==='shut'){name='シャッタースピード';ticks=shutStops();idx=Math.max(0,ticks.indexOf(e.shut));val='1/'+e.shut;isAuto=PRO.ae;unit=Math.round(360*ST.fps/e.shut)+'°'}
   if(ppSel==='wb'){name='ホワイトバランス';ticks=null;min=2500;max=9000;step=100;val=(PRO.awb?5600:PRO.wb)+'K';isAuto=PRO.awb}
   if(ppSel==='ev'){name='露出補正（オート時）';ticks=null;min=-3;max=3;step=1/3;val=PRO.ev.toFixed(1);isAuto=null}
+  if(ppSel==='blur'){name='モーションブラー';ticks=null;min=0;max=3;step=1;val=BLUR_NAME[ST.blur];isAuto=null;unit=ST.blur?'動きに残像':''}
   if(ppSel==='focus'){name='フォーカス';ticks=null;min=0;max=1;step=.01;val=PRO.af?'AF':(PRO.focus<.15?'近':PRO.focus>.9?'∞':Math.round(PRO.focus*100)+'%');isAuto=PRO.af}
   $('#ppName').textContent=name;$('#ppVal').innerHTML=escapeHtml(String(val))+(unit?`<small>${unit}</small>`:'');
   auto.style.display=isAuto===null?'none':'';auto.classList.toggle('on',!!isAuto);auto.textContent=ppSel==='focus'?'AF':'オート';
   if(ticks){R.min=0;R.max=ticks.length-1;R.step=1;R.value=idx;$('#ppMin').textContent=ppSel==='shut'?'1/'+ticks[0]:ticks[0];$('#ppMax').textContent=ppSel==='shut'?'1/'+ticks[ticks.length-1]:ticks[ticks.length-1]}
-  else{R.min=min;R.max=max;R.step=step;R.value=ppSel==='wb'?(PRO.awb?5600:PRO.wb):ppSel==='ev'?PRO.ev:PRO.focus;$('#ppMin').textContent=ppSel==='wb'?'2500K 暖':ppSel==='ev'?'−3':'近';$('#ppMax').textContent=ppSel==='wb'?'9000K 寒':ppSel==='ev'?'+3':'∞'}
+  else{R.min=min;R.max=max;R.step=step;R.value=ppSel==='wb'?(PRO.awb?5600:PRO.wb):ppSel==='ev'?PRO.ev:ppSel==='blur'?ST.blur:PRO.focus;$('#ppMin').textContent=ppSel==='wb'?'2500K 暖':ppSel==='ev'?'−3':ppSel==='blur'?'オフ':'近';$('#ppMax').textContent=ppSel==='wb'?'9000K 寒':ppSel==='ev'?'+3':ppSel==='blur'?'強':'∞'}
   R.disabled=(ppSel==='ev'&&!PRO.ae);
   const pre=$('#ppPresets');if(!pre.childElementCount){PRESETS.forEach(p=>{const b=document.createElement('button');b.className='chip';b.textContent=p.name;b.onclick=()=>{p.f();renderPro();toast('プリセット「'+p.name+'」')};pre.appendChild(b)})}}
 $$('.pc').forEach(b=>b.onclick=()=>{ppSel=ppSel===b.dataset.p?null:b.dataset.p;renderPro()});
@@ -988,7 +1009,8 @@ $('#ppRange').oninput=e=>{const v=parseFloat(e.target.value);const ex=effExposur
   if(ppSel==='shut'){if(PRO.ae){PRO.iso=ex.iso}PRO.ae=false;PRO.shut=shutStops()[v]}
   if(ppSel==='wb'){PRO.awb=false;PRO.wb=v}
   if(ppSel==='ev'){PRO.ev=Math.round(v*3)/3}
-  if(ppSel==='focus'){PRO.af=false;PRO.focus=v}renderPro();renderCamUI()};
+  if(ppSel==='focus'){PRO.af=false;PRO.focus=v}
+  if(ppSel==='blur'){ST.blur=Math.round(v);saveST();applyBlurDisplay()}renderPro();renderCamUI()};
 $('#ppAuto').onclick=()=>{const ex=effExposure();if(ppSel==='iso'||ppSel==='shut'){if(PRO.ae){PRO.ae=false;PRO.iso=ex.iso;PRO.shut=ex.shut}else PRO.ae=true}
   if(ppSel==='wb')PRO.awb=!PRO.awb;if(ppSel==='focus')PRO.af=!PRO.af;renderPro();renderCamUI()};
 $('#viewfinder').addEventListener('click',()=>{if(ppSel){ppSel=null;renderPro()}});
@@ -1132,12 +1154,12 @@ function updateRecUI(){const r=S.rec;if(!r){return}let el=0;
   else drawMoon(((performance.now()-r.t0)/1000%60)/60);
   if(r.started){el=(performance.now()-r.t0)/1000}const f=Math.floor(el*r.fps)%r.fps,s=Math.floor(el);
   $('#tcText').textContent=`${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}:${String(f).padStart(2,'0')}`}
-setInterval(()=>{const real=VS.mode==='real'&&VS.track;const n=real&&VS.camFrames?VS.camFrames.length:VS.frames.length;
+setInterval(()=>{const real=VS.mode==='real'&&VS.track;const n=blurOn()?VS.blurFrames.length:real&&VS.camFrames?VS.camFrames.length:VS.frames.length;
   const st=real&&VS.track.getSettings?VS.track.getSettings():null;const res=st&&st.width?`${st.width}×${st.height} ・ `:'';
   $('#fpsMeter').innerHTML=`${res}実測 <b>${n?n:'--'}</b> / ${ST.fps} fps`},500);
 
 async function takePhoto(){const src=sourceEl(),c=document.createElement('canvas');const land=ASP()==='16:9';
-  if(VS.mode==='real'){c.width=src.videoWidth;c.height=src.videoHeight}else{c.width=demoCv.width;c.height=demoCv.height}
+  c.width=src.videoWidth||src.width;c.height=src.videoHeight||src.height;
   c.getContext('2d').drawImage(src,0,0,c.width,c.height);$('#flash').classList.remove('go');void $('#flash').offsetWidth;$('#flash').classList.add('go');beep(1600);
   const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.92));const th=grabThumb();
   const take={id:uid(),kind:'photo',blob,mime:'image/jpeg',thumb:th,created:Date.now(),aspect:ASP(),title:'写真',res:c.width+'×'+c.height};
@@ -1303,6 +1325,7 @@ function renderSettings(){const B=$('#settingsBody');
   ${row('解像度','',seg('res',[['720','720p'],['1080','1080p'],['4K','4K']]))}
   ${row('画面比','自動：横に持てば横長、縦に持てば縦長で撮影',seg('aspect',[['auto','自動'],['9:16','縦'],['16:9','横']],true))}
   ${row('手ブレ補正','オンにすると画角が少し狭くなります',tog('stab'))}
+  ${row('モーションブラー','動きに残像を付けてなめらかに見せます。ペンライトの光の軌跡が伸びます',seg('blur',[[0,'オフ'],[1,'弱'],[2,'中'],[3,'強']],true))}
   ${row('フリッカー低減','照明のちらつきを抑えるシャッターを自動で選びます。東日本50Hz／西日本60Hz',seg('flicker',[[50,'50Hz'],[60,'60Hz']]))}
   <h3 class="muted small" style="margin:22px 0 0;font-weight:500">撮影補助</h3>
   ${row('カウントダウン','',seg('countdown',[[0,'なし'],[3,'3s'],[5,'5s'],[10,'10s']]))}
@@ -1379,7 +1402,7 @@ $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation
 
 /* ================= offline ================= */
 // 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
-const APP_VERSION='0.7（11/08 22:00）';
+const APP_VERSION='0.8（11/08 22:30）';
 if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
   const hadController=!!navigator.serviceWorker.controller;let reloading=false;
   window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
