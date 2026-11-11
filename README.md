@@ -78,3 +78,11 @@ Spotify・Apple Music・YouTube Music などの曲や YouTube の音声を直接
 
 ## prototype/
 `prototype/` はブラウザ版（cam.otsuuchi.com）の中身です。main に push すると GitHub Pages に自動で公開されます。
+
+### ブラウザ版の録画の仕組み（0.10〜）
+無音の映像だけを録画し、録画を始めた瞬間に鳴っていた曲の位置を記録して、保存のときに曲の該当区間を合成します（Android版と同じ考え方）。映像は再エンコードしません。設定の「録画方式」で従来方式（音を混ぜて録画）に戻せます。
+
+## tests/
+ブラウザ版の自動テストです。main に push すると GitHub Actions（Tests）でも走ります。
+- `node tests/mux_node.js` … 合成の部品のテスト（ffmpeg が必要）
+- `python3 tests/e2e.py` … アプリ全体のテスト（Playwright と ffmpeg が必要）。`BROWSER=webkit` でWebKitでも実行
