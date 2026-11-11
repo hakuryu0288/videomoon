@@ -554,7 +554,7 @@ const LS={get(k,d){try{const v=localStorage.getItem('vm_'+k);return v?JSON.parse
 
 /* ================= state ================= */
 const ST=Object.assign({fps:60,res:'1080',aspect:'auto',stab:true,flicker:50,countdown:3,grid:true,zebra:false,zebraLv:95,peaking:false,histo:true,
-  mirrorPreview:true,mirrorSave:false,lens:'wide',blur:0,acRate:0,monitorVol:0.9,syncMs:0,autoReview:true,continuous:false,codec:'H.264',scene:'stage',facing:'back'},LS.get('settings',{}));
+  mirrorPreview:true,mirrorSave:false,lens:'wide',blur:0,acRate:0,recMethod:'new',sess:'playback',monitorVol:0.9,syncMs:0,autoReview:true,continuous:false,codec:'H.264',scene:'stage',facing:'back'},LS.get('settings',{}));
 const PRO={ae:true,iso:1600,shut:120,awb:true,wb:5600,ev:0,af:true,focus:0.7};
 const S={tab:'camera',mode:'video',tracks:[],takes:[],activeClip:LS.get('activeClip',null),buffers:new Map(),peaks:new Map(),
   rec:null,counting:false,libFilter:'all',selecting:false,picked:new Set()};
@@ -571,7 +571,14 @@ let AC=null;
 // iPhoneのSafari：音を「音楽再生」として扱わせる。カメラ使用中でも画面収録に音が入り、マナーモードでも鳴るようにする
 function setPlaybackSession(){try{if(navigator.audioSession&&navigator.audioSession.type!=='playback')navigator.audioSession.type='playback'}catch(e){}}
 setPlaybackSession();
-function ac(){setPlaybackSession();if(!AC){const C=window.AudioContext||window.webkitAudioContext;const o={latencyHint:'interactive'};if(ST.acRate)o.sampleRate=ST.acRate;try{AC=new C(o)}catch(e){AC=new C({latencyHint:'interactive'})}}if(AC.state==='suspended')AC.resume();return AC}
+/**
+ * 音声エンジンの時計を細かく読む。AudioContext.currentTime は端末によって数十ms単位でしか進まないことがあるので、
+ * 「currentTime − 端末の時計」の最大値（＝いちばん遅れの少ない読み）を覚えておき、端末の時計から計算し直す。
+ */
+const CLK={k:-Infinity};
+function clkSample(){if(AC&&AC.state==='running'){const d=AC.currentTime-performance.now()/1000;if(d>CLK.k)CLK.k=d}}
+function clkNow(){clkSample();return CLK.k>-Infinity?performance.now()/1000+CLK.k:(AC?AC.currentTime:0)}
+function ac(){setPlaybackSession();if(!AC){CLK.k=-Infinity;const C=window.AudioContext||window.webkitAudioContext;const o={latencyHint:'interactive'};if(ST.acRate)o.sampleRate=ST.acRate;try{AC=new C(o)}catch(e){AC=new C({latencyHint:'interactive'})}}if(AC.state==='suspended')AC.resume();return AC}
 document.addEventListener('pointerdown',()=>{if(AC&&AC.state==='suspended')AC.resume()},{passive:true});
 /**
  * iPhoneのSafariでは、画面収録やイヤホンの抜き差しなどで端末の音声設定（サンプルレート）が途中で変わると、
@@ -1359,8 +1366,73 @@ function mp4Build(vblob,V,A){const {dv:dvOf,u32,u16,u64,str,zeros,cat,box,full}=
   parts.push(box('moov',mv,...traks));
   return {blob:new Blob(parts,{type:V?'video/mp4':'audio/mp4'}),sec:movieDur/mvTs,audioSec:aSec}}
 /*MP4MUX-END*/
+/* ---- 新方式：曲の該当区間を計算で作り、圧縮して、映像に合成する ---- */
+const A_SR=48000,A_LEAD=2048; // 音声は48kHz。圧縮の立ち上がり用に、先頭へ2048サンプルの助走を入れてから捨てる
+let AENC=null;
+/** ブラウザ内蔵の音声圧縮が使えるか（AAC優先。なければOpus）。使えなければ false */
+async function audioEncSupport(){if(AENC!==null)return AENC;AENC=false;if(typeof AudioEncoder==='undefined'||typeof AudioData==='undefined'||typeof OfflineAudioContext==='undefined')return AENC;
+  for(const c of ['mp4a.40.2','opus']){try{const r=await AudioEncoder.isConfigSupported({codec:c,sampleRate:A_SR,numberOfChannels:2,bitrate:192000});if(r&&r.supported){AENC=c;break}}catch(e){}}
+  return AENC}
+async function encodePcm(pcm,codec){const frames=[];let desc=null,err=null;
+  const enc=new AudioEncoder({output:(c,meta)=>{let u=new Uint8Array(c.byteLength);c.copyTo(u);
+      if(codec!=='opus'&&u.length>7&&u[0]===0xFF&&(u[1]&0xF6)===0xF0)u=u.subarray((u[1]&1)?7:9); // 念のため：ADTSの見出しが付いていたら外す
+      frames.push(u);const d=meta&&meta.decoderConfig&&meta.decoderConfig.description;
+      if(d&&!desc)desc=d instanceof ArrayBuffer?new Uint8Array(d.slice(0)):new Uint8Array(d.buffer.slice(d.byteOffset,d.byteOffset+d.byteLength))},error:e=>{err=e}});
+  enc.configure({codec,sampleRate:pcm.sampleRate,numberOfChannels:2,bitrate:codec==='opus'?160000:192000});
+  const L=pcm.getChannelData(0),R=pcm.numberOfChannels>1?pcm.getChannelData(1):L,B=pcm.sampleRate;
+  for(let o=0;o<pcm.length&&!err;o+=B){const n=Math.min(B,pcm.length-o),d=new Float32Array(n*2);d.set(L.subarray(o,o+n),0);d.set(R.subarray(o,o+n),n);
+    const ad=new AudioData({format:'f32-planar',sampleRate:pcm.sampleRate,numberOfFrames:n,numberOfChannels:2,timestamp:Math.round(o/pcm.sampleRate*1e6),data:d});enc.encode(ad);ad.close();
+    if(enc.encodeQueueSize>4)await sleep(0)}
+  if(!err)await enc.flush();try{enc.close()}catch(e){}
+  if(err)throw err;if(!frames.length)throw new Error('音声を圧縮できませんでした');return {frames,desc}}
+/** 圧縮した音声を、合成用の形にまとめる。skip＝先頭で捨てるサンプル数（助走＋圧縮による遅れ） */
+function packAudio(e,codec,playSamples){
+  if(codec==='opus'){const pre=e.desc&&e.desc.length>=12?e.desc[10]|(e.desc[11]<<8):312;
+    return {codec:'Opus',rate:A_SR,ch:2,frameDur:960,frames:e.frames,preSkip:0,skip:A_LEAD+pre,play:playSamples,label:'Opus',delay:pre}} // 捨てる量は編集リストにまとめて書く（二重に捨てられないように、Opus側の欄は0）
+  // AACの圧縮による遅れ：Apple製の圧縮は2112サンプル、それ以外は1024サンプルが標準
+  const delay=(IOS||/Mac/.test(navigator.platform||''))?2112:1024;
+  return {codec:'mp4a',rate:A_SR,ch:2,frameDur:1024,frames:e.frames,asc:new Uint8Array([0x11,0x90]),skip:A_LEAD+delay,play:playSamples,bitrate:192000,label:'AAC',delay,
+    desc:e.desc?[...e.desc.subarray(0,4)].map(x=>x.toString(16).padStart(2,'0')).join(''):''}}
+/**
+ * テイクの音声を作る。sync＝{pos0:動画の0秒のときに鳴っていた曲の位置, syncMs:設定の音ズレ補正, adjMs:あとからの調整,
+ * start/end:クリップの範囲, fadeIn/fadeOut}。動画の時刻 v に、曲の位置 pos0+v−ずらし量 の音が入る（クリップの範囲の外は無音）。
+ */
+async function makeTakeAudio(tr,sync,videoSec,codec){
+  const src=S.buffers.get(tr.id)||await ensureBuffer(tr);
+  const oc=new OfflineAudioContext(2,A_LEAD+Math.ceil(videoSec*A_SR)+1024,A_SR);
+  const shift=((sync.syncMs||0)+(sync.adjMs||0))/1000,len=sync.end-sync.start;
+  const ts=A_LEAD/A_SR+(sync.start-sync.pos0)+shift,te=ts+len; // クリップの頭と終わりが鳴る時刻（助走を含む）
+  const when=Math.max(0,ts),cut=Math.max(0,-ts),dur=len-cut;
+  if(dur>0.01){const s=oc.createBufferSource();s.buffer=src;const g=oc.createGain();s.connect(g).connect(oc.destination);
+    const fi=sync.fadeIn||0,fo=sync.fadeOut||0;
+    if(fi>0&&cut<fi){g.gain.setValueAtTime(1e-4*Math.pow(1e4,cut/fi),when);g.gain.exponentialRampToValueAtTime(1,ts+fi)}else g.gain.setValueAtTime(1,when);
+    if(fo>0&&te-fo>=Math.max(when,ts+fi)){g.gain.setValueAtTime(1,te-fo);g.gain.linearRampToValueAtTime(1e-4,te)}
+    s.start(when,sync.start+cut,dur)}
+  const pcm=await oc.startRendering();
+  return packAudio(await encodePcm(pcm,codec),codec,Math.ceil(videoSec*A_SR))}
+/**
+ * 確認用：音の頭出しが合っているかを自分で測る。0.25秒の位置に音を置いた音声だけのファイルを作り、
+ * 端末の再生機能で読み戻して、音の位置のずれ（ms）を返す。結果は情報欄に出すだけで、補正には使わない。
+ */
+async function leadCheck(codec){const key='leadCheck2',c=LS.get(key,null);if(c&&c.ua===navigator.userAgent&&c.codec===codec)return c.ms;let ms=null;
+  try{const P=12000,oc=new OfflineAudioContext(2,A_LEAD+A_SR/2,A_SR),b=oc.createBuffer(2,A_LEAD+A_SR/2,A_SR);
+    for(let ch=0;ch<2;ch++){const d=b.getChannelData(ch);for(let i=0;i<2400;i++)d[A_LEAD+P+i]=0.8*Math.sin(2*Math.PI*1000*i/A_SR)}
+    const A=packAudio(await encodePcm(b,codec),codec,A_SR/2),file=await mp4Build(null,null,A).blob.arrayBuffer();
+    const dec=await Promise.race([new OfflineAudioContext(2,1,A_SR).decodeAudioData(file),sleep(2500).then(()=>null)]);
+    if(dec){const x=dec.getChannelData(0);let i=0;while(i<x.length&&Math.abs(x[i])<0.2)i++;if(i<x.length)ms=Math.round((i-P)/A_SR*10000)/10}}catch(e){}
+  LS.set(key,{ua:navigator.userAgent,codec,ms});return ms}
+/** 録画した無音の映像（vblob）から、音入りの完成品を作る */
+async function buildTake(vblob,r){const t0=performance.now(),V=await mp4ReadVideo(vblob),t1=performance.now();let A=null,sync=null,chk=null;
+  if(r.clip){const c=r.clip.c;sync={v:1,pos0:r.pos0,syncMs:ST.syncMs||0,adjMs:0,start:c.start,end:c.end,fadeIn:c.fadeIn||0,fadeOut:c.fadeOut||0};
+    A=await makeTakeAudio(r.clip.tr,sync,V.sec,r.enc);chk=await leadCheck(r.enc)}
+  const t2=performance.now(),out=mp4Build(vblob,V,A);
+  const lost=r.dur>2&&V.sec<r.dur*0.9;
+  const info=`新方式・映像${V.sec.toFixed(2)}s（${V.codec} ${V.S.length}コマ・キー${V.keyframes}）・元は${V.fragments?'細切れ'+V.fragments:'普通形式'}${V.otherTracks?'・他トラック'+V.otherTracks:''}
+録画${r.dur.toFixed(2)}s→保存${out.sec.toFixed(2)}s${lost?' ⚠終わりが欠けた可能性':''}・音声${A?`${A.label} ${out.audioSec.toFixed(2)}s・頭出し${A.delay}${A.desc?'('+A.desc+')':''}・確認${chk==null?'不可':(chk>0?'+':'')+chk+'ms'}`:'なし'}
+${sync?`開始位置${((sync.pos0-sync.start)*1000).toFixed(0)}ms（粗い時計との差${((r.pos0-r.posRaw)*1000).toFixed(0)}ms・開始処理${r.startMs.toFixed(0)}ms）・補正${sync.syncMs}ms・`:''}処理 読み${(t1-t0).toFixed(0)}ms 音声${(t2-t1).toFixed(0)}ms`;
+  return {blob:out.blob,sec:out.sec,sync,info,lost}}
 /* ================= recording ================= */
-function pickMime(){const c=['video/mp4;codecs=avc1.42E01F,mp4a.40.2','video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+function pickMime(videoOnly){const c=videoOnly?['video/mp4;codecs=avc1.42E01F','video/mp4;codecs=avc1','video/mp4']:['video/mp4;codecs=avc1.42E01F,mp4a.40.2','video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
   for(const m of c){try{if(MediaRecorder.isTypeSupported(m))return m}catch(e){}}return ''}
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 async function countdown(n){S.counting=true;S.cancelCd=false;const el=$('#countdown');
@@ -1378,42 +1450,52 @@ async function startRec(){if(typeof MediaRecorder==='undefined'){toast('この�
   ppSel=null;renderPro();$('#tabbar').classList.add('hide');app.classList.add('recording');
   if(ST.countdown){const ok=await countdown(ST.countdown);if(!ok){app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}}
   const vt=videoTrackForRecording();if(!vt){toast('映像を取得できませんでした');app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}
-  const ctx=ac();const tracks=[vt];let dest=null;if(a){dest=ctx.createMediaStreamDestination();tracks.push(dest.stream.getAudioTracks()[0])}
-  const mime=pickMime();let mr;try{mr=new MediaRecorder(new MediaStream(tracks),mime?{mimeType:mime,videoBitsPerSecond:recBitrate()}:{})}catch(e){toast('録画を開始できませんでした');app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}
-  const r={mr,chunks:[],mime:mr.mimeType||mime,clip:a,t0:0,dur:0,thumb:null,started:false,isSample:a&&a.tr.isSample,fps:ST.fps,aspect:ASP()};S.rec=r;
+  // 新方式：無音の映像だけを録画して、音声は保存のときに合成する。音声の圧縮が使えない端末や「従来」を選んだ場合は、音を混ぜて録画する
+  const enc=ST.recMethod==='old'?false:await audioEncSupport();let mime=enc?pickMime(true):'';const useNew=!!enc&&/mp4/.test(mime);if(!useNew)mime=pickMime(false);
+  const ctx=ac();const tracks=[vt];let dest=null;if(a&&!useNew){dest=ctx.createMediaStreamDestination();tracks.push(dest.stream.getAudioTracks()[0])}
+  let mr;try{mr=new MediaRecorder(new MediaStream(tracks),mime?{mimeType:mime,videoBitsPerSecond:recBitrate()}:{})}catch(e){toast('録画を開始できませんでした');app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}
+  const r={mr,chunks:[],mime:mr.mimeType||mime,useNew,enc,pos0:0,posRaw:0,startMs:0,clip:a,t0:0,dur:0,thumb:null,started:false,isSample:a&&a.tr.isSample,fps:ST.fps,aspect:ASP()};S.rec=r;
   mr.ondataavailable=e=>{if(e.data&&e.data.size)r.chunks.push(e.data)};
   mr.onstop=()=>finishRec(r);
   const musicBuf=a?await bufForCtx(a.tr):null;if(a&&S.rec!==r)return;
-  if(a){const c=a.c,buf=musicBuf,pre=Math.min(c.preroll||0,c.start),len=c.end-c.start,t0=ctx.currentTime+.15,sync=(ST.syncMs||0)/1000;
+  if(a){CLK.k=-Infinity;const c=a.c,buf=musicBuf,pre=Math.min(c.preroll||0,c.start),len=c.end-c.start,t0=ctx.currentTime+.15,sync=(ST.syncMs||0)/1000;
     // monitor (speaker) path
     const mon=ctx.createBufferSource();mon.buffer=buf;const mg=ctx.createGain();mg.gain.value=ST.monitorVol;mon.connect(mg).connect(ctx.destination);
     mon.start(t0,c.start-pre,pre+len);
-    // recording path (fades applied here)
-    const rs=ctx.createBufferSource();rs.buffer=buf;const rg=ctx.createGain();rs.connect(rg).connect(dest);
-    const rStart=t0+pre+Math.max(0,sync),rOff=c.start+Math.max(0,-sync),rLen=len-Math.abs(sync);
-    rg.gain.setValueAtTime(c.fadeIn?0.0001:1,rStart);if(c.fadeIn)rg.gain.exponentialRampToValueAtTime(1,rStart+c.fadeIn);
-    if(c.fadeOut){rg.gain.setValueAtTime(1,rStart+rLen-c.fadeOut);rg.gain.linearRampToValueAtTime(0.0001,rStart+rLen)}
-    rs.start(rStart,rOff,rLen);
+    // 従来方式だけ：録画に混ぜる音（フェードはここで付ける）
+    let rs=null;if(dest){rs=ctx.createBufferSource();rs.buffer=buf;const rg=ctx.createGain();rs.connect(rg).connect(dest);
+      const rStart=t0+pre+Math.max(0,sync),rOff=c.start+Math.max(0,-sync),rLen=len-Math.abs(sync);
+      rg.gain.setValueAtTime(c.fadeIn?0.0001:1,rStart);if(c.fadeIn)rg.gain.exponentialRampToValueAtTime(1,rStart+c.fadeIn);
+      if(c.fadeOut){rg.gain.setValueAtTime(1,rStart+rLen-c.fadeOut);rg.gain.linearRampToValueAtTime(0.0001,rStart+rLen)}
+      rs.start(rStart,rOff,rLen)}
+    const clk=setInterval(clkSample,8); // 録画開始までのあいだ、音声エンジンの時計を細かく読んでおく
     r.music={mon,rs};r.musicT0=t0;r.musicFrom=c.start-pre;r.recAt=t0+pre;r.len=len;r.pre=pre;$('#recBar').classList.add('has');drawRecWave(a);
-    const wait=(r.recAt-ctx.currentTime)*1000-25;await sleep(Math.max(0,wait));if(S.rec!==r)return;
-    mr.start();r.started=true;r.t0=performance.now();
+    const wait=(r.recAt-ctx.currentTime)*1000-25;await sleep(Math.max(0,wait));clearInterval(clk);if(S.rec!==r)return;
+    // 新方式：録画を始める瞬間に、曲のどこが鳴っているかを記録する（これが動画の0秒になる）
+    const pNow=clkNow(),pRaw=ctx.currentTime,tCall=performance.now();
+    mr.start();r.started=true;r.t0=performance.now();r.startMs=r.t0-tCall;r.pos0=(c.start-pre)+(pNow-t0);r.posRaw=(c.start-pre)+(pRaw-t0);
     r.endTimer=setTimeout(()=>stopRec('end'),(len*1000)+120)}
   else{$('#recBar').classList.remove('has');mr.start();r.started=true;r.t0=performance.now()}
   setTimeout(()=>{if(S.rec===r)r.thumb=grabThumb()},700)}
 function stopRec(why){const r=S.rec;if(!r)return;clearTimeout(r.endTimer);r.dur=r.started?(performance.now()-r.t0)/1000:0;r.why=why;
-  if(r.music){try{r.music.mon.stop()}catch(e){}try{r.music.rs.stop()}catch(e){}}
+  if(r.music){try{r.music.mon.stop()}catch(e){}try{if(r.music.rs)r.music.rs.stop()}catch(e){}}
   if(r.started&&r.mr.state!=='inactive')r.mr.stop();else finishRec(r)}
 async function finishRec(r){S.rec=null;setCanvasSize();layoutGuides();app.classList.remove('recording');$('#tabbar').classList.remove('hide');drawMoon(0);$('#tcText').textContent='00:00:00';
   if(!r.started||!r.chunks.length||r.dur<.3){toast('録画が短すぎるため保存しませんでした');return}
   let blob=new Blob(r.chunks,{type:(r.mime||'video/webm').split(';')[0]});
-  const rawBlob=blob;blob=await fixMp4Duration(blob,r.dur); // iPhoneで長さが「1,988時間」などになるのを防ぐ
-  const lenFixed=blob!==rawBlob||/修正[1-9]/.test(MP4INFO),lenInfo=MP4INFO+`\n音声エンジン${AC?AC.sampleRate:'-'}Hz・${navigator.audioSession?'AudioSession:'+navigator.audioSession.type:'AudioSessionなし'}・${r.mime}`;
+  const rawBlob=blob;let made=null,newErr='';
+  if(r.useNew){busy(true,'動画を仕上げています…');try{made=await buildTake(blob,r);blob=made.blob}catch(e){newErr='新方式でエラー：'+(e&&e.message||e)}busy(false)}
+  if(!made)blob=await fixMp4Duration(blob,r.dur); // 従来方式：iPhoneで長さが「1,988時間」などになるのを防ぐ
+  const lenFixed=blob!==rawBlob||/修正[1-9]/.test(MP4INFO),lenInfo=(made?made.info:(newErr?newErr+'\n':'')+MP4INFO)+`\n音声エンジン${AC?AC.sampleRate:'-'}Hz・${navigator.audioSession?'AudioSession:'+navigator.audioSession.type:'AudioSessionなし'}・${r.mime}`;
+  if(made)r.dur=made.sec;
   const a=r.clip;const n=S.takes.filter(t=>t.kind==='video'&&a&&t.clipId===a.c.id).length+1;
   const take={id:uid(),kind:'video',blob,mime:blob.type,thumb:r.thumb||grabThumb(),created:Date.now(),dur:r.dur,fps:r.fps,res:ST.res,aspect:r.aspect,
-    title:a?`${a.c.name} ・ テイク ${n}`:'動画',lenFixed,lenInfo,blurUsed:ST.blur,trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:VS.mode==='demo'?ST.scene:null};
+    title:a?`${a.c.name} ・ テイク ${n}`:'動画',lenFixed,lenInfo,method:made?'new':'old',sync:made?made.sync:null,blurUsed:ST.blur,trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:VS.mode==='demo'?ST.scene:null};
   S.takes.unshift(take);await DB.put('takes',take);updateLastThumb();askPersist();
+  const warn=newErr&&a?'音声を合成できませんでした。設定の「録画方式」を「従来」にすると音入りで撮れます':made&&made.lost?'録画の終わりが欠けている可能性があります。再生して確認してください':'';
+  if(warn)setTimeout(()=>toast(warn,5000),1400);
   if(ST.continuous&&!S.contStop){toast(`テイク ${n} を保存。続けて撮影します`);await sleep(1200);if(S.tab==='camera'&&!S.rec&&!S.contStop)startRec();return}
-  if(ST.autoReview)showReview(take);else toast('ライブラリに保存しました')}
+  if(ST.autoReview)showReview(take);else if(!warn)toast('ライブラリに保存しました')}
 function grabThumb(){const src=sourceEl(),land=ASP()==='16:9',c=document.createElement('canvas');c.width=land?320:180;c.height=land?180:320;
   try{c.getContext('2d').drawImage(src,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.7)}catch(e){return ''}}
 function drawRecWave(a){const cv=$('#recWave');requestAnimationFrame(()=>{const p=S.peaks.get(a.tr.id),d=a.tr.duration;drawMiniWave(cv,p,(a.c.start-(a.c.preroll||0))/d,a.c.end/d,'#4a4a62')})}
