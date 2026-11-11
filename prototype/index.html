@@ -284,6 +284,9 @@ svg{display:block}
 .pl-top .ttl span{font-size:12px;color:var(--mu);font-family:var(--num);white-space:pre-line;display:block}
 .iconBtn{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--s1)}
 .iconBtn svg{width:20px;height:20px}
+[hidden]{display:none!important}
+.plLinks{display:flex;gap:14px}.plLinks button{font-size:12px;color:var(--mu);text-decoration:underline;text-underline-offset:3px;padding:4px 0}
+.adjRow{display:flex;gap:8px;align-items:center;margin-top:6px}.adjRow .btn{height:38px;padding:0 10px;flex:none}.adjRow input{flex:1;min-width:0}
 .pl-media{flex:1;position:relative;display:flex;gap:4px;min-height:0}
 .pl-media video,.pl-media img{width:100%;height:100%;object-fit:contain;background:#000;min-width:0}
 .pl-media.cmp video{width:50%}
@@ -341,6 +344,7 @@ svg{display:block}
 .ls #countdown{font-size:120px}
 .ls #sheet{left:0;right:0;margin:0 auto;width:min(560px,100%);max-height:94%}
 .ls .review-vid{max-height:46vh}
+.ls #adjVid{max-height:30vh}
 .ls #toast{top:12px}
 /* 横向きで画面の高さが足りないとき（Safariのタブバー表示中など） */
 @media (max-height:420px){
@@ -506,7 +510,7 @@ svg{display:block}
     <div id="player">
       <div class="pl-top">
         <button class="iconBtn" id="plClose" aria-label="閉じる"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-        <div class="ttl"><b id="plTitle"></b><span id="plMeta"></span></div>
+        <div class="ttl"><b id="plTitle"></b><span id="plMeta"></span><div class="plLinks"><button id="plAdj" hidden>音ズレを直す</button><button id="plMore" hidden>詳細</button></div><span id="plDetail" hidden></span></div>
       </div>
       <div class="pl-media" id="plMedia"></div>
       <div class="pl-ctrl" id="plCtrl"><button class="iconBtn" id="cmpPlay"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg></button><input type="range" id="cmpSeek" min="0" max="1000" value="0"><button class="chip" id="cmpAudio">音: A</button></div>
@@ -554,11 +558,12 @@ const LS={get(k,d){try{const v=localStorage.getItem('vm_'+k);return v?JSON.parse
 
 /* ================= state ================= */
 const ST=Object.assign({fps:60,res:'1080',aspect:'auto',stab:true,flicker:50,countdown:3,grid:true,zebra:false,zebraLv:95,peaking:false,histo:true,
-  mirrorPreview:true,mirrorSave:false,lens:'wide',blur:0,acRate:0,recMethod:'new',sess:'playback',monitorVol:0.9,syncMs:0,autoReview:true,continuous:false,codec:'H.264',scene:'stage',facing:'back'},LS.get('settings',{}));
+  mirrorPreview:true,mirrorSave:false,lens:'wide',blur:0,recMethod:'new',sess:'playback',monitorVol:0.9,syncMs:0,autoReview:true,continuous:false,codec:'H.264',scene:'stage',facing:'back'},LS.get('settings',{}));
 const PRO={ae:true,iso:1600,shut:120,awb:true,wb:5600,ev:0,af:true,focus:0.7};
 const S={tab:'camera',mode:'video',tracks:[],takes:[],activeClip:LS.get('activeClip',null),buffers:new Map(),peaks:new Map(),
   rec:null,counting:false,libFilter:'all',selecting:false,picked:new Set()};
 if(ST.v!==2){ST.v=2;ST.aspect='auto'}
+delete ST.acRate;if(!['720','1080','4K'].includes(ST.res))ST.res='1080';
 function saveST(){LS.set('settings',ST)}
 const phoneEl=$('#phone'),mqLand=matchMedia('(orientation: landscape) and (max-height: 600px)');
 function isLand(){return phoneEl.classList.contains('landscape')||mqLand.matches}
@@ -569,7 +574,7 @@ function aspLabel(){return ST.aspect==='auto'?'自動':ASP()==='16:9'?'横':'縦
 /* ================= audio ================= */
 let AC=null;
 // iPhoneのSafari：音を「音楽再生」として扱わせる。カメラ使用中でも画面収録に音が入り、マナーモードでも鳴るようにする
-function setPlaybackSession(){try{if(navigator.audioSession&&navigator.audioSession.type!=='playback')navigator.audioSession.type='playback'}catch(e){}}
+function setPlaybackSession(){try{const want=ST.sess==='auto'?'auto':'playback';if(navigator.audioSession&&navigator.audioSession.type!==want)navigator.audioSession.type=want}catch(e){}}
 setPlaybackSession();
 /**
  * 音声エンジンの時計を細かく読む。AudioContext.currentTime は端末によって数十ms単位でしか進まないことがあるので、
@@ -578,7 +583,7 @@ setPlaybackSession();
 const CLK={k:-Infinity};
 function clkSample(){if(AC&&AC.state==='running'){const d=AC.currentTime-performance.now()/1000;if(d>CLK.k)CLK.k=d}}
 function clkNow(){clkSample();return CLK.k>-Infinity?performance.now()/1000+CLK.k:(AC?AC.currentTime:0)}
-function ac(){setPlaybackSession();if(!AC){CLK.k=-Infinity;const C=window.AudioContext||window.webkitAudioContext;const o={latencyHint:'interactive'};if(ST.acRate)o.sampleRate=ST.acRate;try{AC=new C(o)}catch(e){AC=new C({latencyHint:'interactive'})}}if(AC.state==='suspended')AC.resume();return AC}
+function ac(){setPlaybackSession();if(!AC){CLK.k=-Infinity;const C=window.AudioContext||window.webkitAudioContext;AC=new C({latencyHint:'interactive'})}if(AC.state==='suspended')AC.resume();return AC}
 document.addEventListener('pointerdown',()=>{if(AC&&AC.state==='suspended')AC.resume()},{passive:true});
 /**
  * iPhoneのSafariでは、画面収録やイヤホンの抜き差しなどで端末の音声設定（サンプルレート）が途中で変わると、
@@ -1559,7 +1564,11 @@ async function deleteTake(id){S.takes=S.takes.filter(t=>t.id!==id);await DB.del(
 const PL={urls:[]};
 function openPlayer(t){closePlayerMedia();const m=$('#plMedia');m.className='pl-media';$('#plCtrl').classList.remove('on');
   $('#plTitle').textContent=t.title;const d=new Date(t.created);
-  $('#plMeta').textContent=(t.kind==='video'?`${t.dur.toFixed(1)}秒 ・ ${t.fps}fps ・ ${t.res}p ・ ${t.trackName||'音声なし'}`:`写真 ・ ${t.res} ・ ${d.toLocaleString('ja-JP')}`)+` ・ ${fmtBytes(t.blob.size)}`+(t.kind==='video'&&t.mime&&t.mime.includes('mp4')?(t.lenFixed?' ・ 長さ補正済み':' ・ 長さ補正なし'):'')+(t.lenInfo?`\n${t.lenInfo}${t.blurUsed?'・ブラー'+t.blurUsed:''}`:'');
+  const resL=t.res==='4K'?'4K':t.res+'p',adj=t.sync&&t.sync.adjMs||0;
+  $('#plMeta').textContent=(t.kind==='video'?`${t.dur.toFixed(1)}秒 ・ ${t.fps}fps ・ ${resL} ・ ${t.trackName||'音声なし'}`:`写真 ・ ${t.res} ・ ${d.toLocaleString('ja-JP')}`)+` ・ ${fmtBytes(t.blob.size)}`+(adj?` ・ 音${adj>0?'+':''}${adj}ms`:'');
+  const det=$('#plDetail');det.hidden=true;det.textContent=t.lenInfo?`${t.lenInfo}${t.blurUsed?'・ブラー'+t.blurUsed:''}`:'';
+  $('#plMore').hidden=!t.lenInfo;$('#plMore').onclick=()=>{det.hidden=!det.hidden};
+  const canAdj=t.kind==='video'&&t.sync&&S.tracks.some(x=>x.id===t.trackId);$('#plAdj').hidden=!canAdj;$('#plAdj').onclick=()=>openAdjust(t);
   const url=URL.createObjectURL(t.blob);PL.urls.push(url);
   if(t.kind==='video'){const v=document.createElement('video');v.src=url;v.controls=true;v.playsInline=true;v.loop=true;m.appendChild(v);fixDuration(v);v.play().catch(()=>{})}
   else{const i=document.createElement('img');i.src=url;m.appendChild(i)}
@@ -1574,13 +1583,38 @@ function openPlayer(t){closePlayerMedia();const m=$('#plMedia');m.className='pl-
     if(k==='compare')pickCompare(t);
     if(k==='post')openPostFlow(t)});
   $('#player').classList.add('open')}
+/** 音だけ作り直す（映像はそのまま）。adjMs＝あとからずらす量（＋で音を遅らせる）。新しい動画を返す（保存はしない） */
+async function retimeTake(t,adjMs){const tr=S.tracks.find(x=>x.id===t.trackId);if(!tr||!t.sync)throw new Error('元の曲がありません');
+  const codec=await audioEncSupport();if(!codec)throw new Error('この端末では調整できません');
+  const V=await mp4ReadVideo(t.blob),A=await makeTakeAudio(tr,{...t.sync,adjMs},V.sec,codec);return mp4Build(t.blob,V,A).blob}
+function openAdjust(t){$$('#plMedia video').forEach(v=>v.pause());let adj=t.sync.adjMs||0,made={adj,blob:t.blob},url=null,seq=0;
+  const label=()=>{$('#adjV').textContent=adj>0?`${adj}ms 遅らせる`:adj<0?`${-adj}ms 早める`:'ずらさない';$('#adjR').value=adj;
+    const tot=clamp((t.sync.syncMs||0)+adj,-500,500);$('#adjKeepL').textContent=`次回からもこの補正で撮る（設定の「音ズレ補正」を ${tot>0?'+':''}${tot}ms に）`};
+  const show=(blob,keepPos)=>{const v=$('#adjVid');if(!v)return;const at=keepPos?v.currentTime:0;if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(blob);v.src=url;
+    v.addEventListener('loadedmetadata',()=>{try{if(at>0&&at<v.duration)v.currentTime=at}catch(e){}v.play().catch(()=>{})},{once:true})};
+  const preview=async()=>{const my=++seq,want=adj;try{const blob=await retimeTake(t,want);if(my!==seq)return;made={adj:want,blob};show(blob,true)}catch(e){if(my===seq)toast('調整できませんでした：'+(e&&e.message||e),3500)}};
+  openSheet(`<h3>音ズレを直す</h3><p class="muted small">動きと音がずれて見えるときに、音だけをずらします（映像はそのまま）。ワイヤレスイヤホンで聴きながら撮って動きが遅れて見える場合は、音を遅らせます。</p>
+  <video class="review-vid" id="adjVid" playsinline controls loop></video>
+  <div style="margin-top:10px"><div class="fl">音を <span class="num" id="adjV" style="color:var(--moon)"></span></div>
+    <div class="adjRow"><button class="btn sec" data-d="-10">−10</button><input type="range" id="adjR" min="-500" max="500" step="5"><button class="btn sec" data-d="10">＋10</button></div></div>
+  <label class="muted small" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="adjKeep"><span id="adjKeepL"></span></label>
+  <div class="rv-btns"><button class="btn sec" style="flex:1" id="adjCancel">やめる</button><button class="btn pri" style="flex:1" id="adjOk">決定</button></div>`,()=>{seq++;if(url)URL.revokeObjectURL(url)});
+  label();show(t.blob,false);
+  $('#adjR').oninput=e=>{adj=parseInt(e.target.value,10)||0;label()};$('#adjR').onchange=()=>preview();
+  $$('.adjRow .btn').forEach(b=>b.onclick=()=>{adj=clamp(adj+parseInt(b.dataset.d,10),-500,500);label();preview()});
+  $('#adjCancel').onclick=()=>closeSheet();
+  $('#adjOk').onclick=async()=>{const keep=$('#adjKeep').checked;
+    if(adj!==(t.sync.adjMs||0)){try{busy(true,'音を作り直しています…');const blob=made.adj===adj?made.blob:await retimeTake(t,adj);
+        t.blob=blob;t.sync={...t.sync,adjMs:adj};t.saved=false;await DB.put('takes',t)}catch(e){busy(false);toast('調整できませんでした：'+(e&&e.message||e),3500);return}busy(false)}
+    if(keep){ST.syncMs=clamp((t.sync.syncMs||0)+adj,-500,500);saveST()}
+    closeSheet();openPlayer(t);if(S.tab==='library')renderLibrary();toast(keep?'変更しました。次回からもこの補正で撮ります':'音のタイミングを変更しました',3000)}}
 function closePlayerMedia(){$$('#plMedia video').forEach(v=>{v.pause();v.removeAttribute('src');v.load()});$('#plMedia').innerHTML='';PL.urls.forEach(u=>URL.revokeObjectURL(u));PL.urls=[];clearInterval(PL.sync)}
 function closePlayer(){closePlayerMedia();$('#player').classList.remove('open')}
 $('#plClose').onclick=closePlayer;
 function pickCompare(t){const others=S.takes.filter(x=>x.kind==='video'&&x.id!==t.id);if(!others.length)return toast('比較できる他の動画がありません');
   openSheet('<h3>並べて比べるテイク</h3><p class="muted small">同じクリップのテイク同士なら、音楽に合わせて動きのズレを見比べられます。</p>'+others.map(o=>`<button class="opt${o.clipId&&o.clipId===t.clipId?' cur':''}" data-id="${o.id}"><span class="oi" style="background:url(${o.thumb}) center/cover"></span><span class="ot"><b>${escapeHtml(o.title)}</b><span class="num">${o.dur.toFixed(1)}秒 ・ ${o.fps}fps</span></span></button>`).join(''));
   $$('#sheet .opt').forEach(b=>b.onclick=()=>{closeSheet();openCompare(t,S.takes.find(x=>x.id===b.dataset.id))})}
-function openCompare(a,b){closePlayerMedia();const m=$('#plMedia');m.className='pl-media cmp';$('#plTitle').textContent='比較';$('#plMeta').textContent=a.title+' ／ '+b.title;
+function openCompare(a,b){closePlayerMedia();const m=$('#plMedia');m.className='pl-media cmp';$('#plTitle').textContent='比較';$('#plMeta').textContent=a.title+' ／ '+b.title;$('#plAdj').hidden=$('#plMore').hidden=$('#plDetail').hidden=true;
   const vs=[a,b].map((t,i)=>{const u=URL.createObjectURL(t.blob);PL.urls.push(u);const v=document.createElement('video');v.src=u;v.playsInline=true;v.muted=i===1;fixDuration(v);m.appendChild(v);
     const l=document.createElement('span');l.className='lbl';l.style.left=i?'calc(50% + 8px)':'8px';l.textContent=i?'B':'A';m.appendChild(l);return v});
   $('#plCtrl').classList.add('on');let audioIdx=0;$('#cmpAudio').textContent='音: A';
@@ -1689,8 +1723,9 @@ function renderSettings(){const B=$('#settingsBody');
   ${row('前面カメラの映像を反転して保存','',tog('mirrorSave'))}
   <h3 class="muted small" style="margin:22px 0 0;font-weight:500">音楽</h3>
   <div class="field"><div style="flex:1"><div class="fl">撮影中のスピーカー音量</div><div class="fd">動画に入る音量は変わりません</div><input type="range" min="0" max="1" step="0.05" value="${ST.monitorVol}" data-r="monitorVol" style="width:100%"></div></div>
-  <div class="field"><div style="flex:1"><div class="fl">音ズレ補正 <span class="num" id="syncV" style="color:var(--moon)">${ST.syncMs>0?'+':''}${ST.syncMs} ms</span></div><div class="fd">動画と音楽のタイミングがずれる端末向け。＋で音を遅らせます</div><input type="range" min="-200" max="200" step="10" value="${ST.syncMs}" data-r="syncMs" style="width:100%"></div></div>
-  ${row('音声エンジンの音質（調査用）','動画の長さや音がおかしいときに切り替えて試してください',seg('acRate',[[0,'自動'],[44100,'44.1k'],[48000,'48k']],true))}
+  <div class="field"><div style="flex:1"><div class="fl">音ズレ補正 <span class="num" id="syncV" style="color:var(--moon)">${ST.syncMs>0?'+':''}${ST.syncMs} ms</span></div><div class="fd">動画と音楽のタイミングがずれるとき向け。＋で音を遅らせます。撮ったあとでも、動画の再生画面の「音ズレを直す」で1本ずつ直せます</div><input type="range" min="-500" max="500" step="10" value="${ST.syncMs}" data-r="syncMs" style="width:100%"></div></div>
+  ${row('録画方式','新方式は、無音で録画してから曲を合成します。うまく撮れないときは従来方式に戻せます',seg('recMethod',[['new','新方式'],['old','従来']],true))}
+  ${navigator.audioSession?row('撮影中の音の扱い（調査用）','iPhoneの画面収録に音が入らないときに「自動」を試してください。「自動」はマナーモードで音が鳴りません',seg('sess',[['playback','音楽再生'],['auto','自動']],true)):''}
   <h3 class="muted small" style="margin:22px 0 0;font-weight:500">撮影のあと</h3>
   ${row('撮影後すぐに確認','撮り直すか残すかをその場で選べます',tog('autoReview'))}
   ${row('連続撮影','止めるまで同じクリップで何テイクも続けて撮ります',tog('continuous'))}
@@ -1709,8 +1744,8 @@ function renderSettings(){const B=$('#settingsBody');
   <button class="btn sec" style="width:100%;margin-top:8px;color:var(--rec)" id="wipe">保存したデータをすべて削除</button>
   <p class="muted small" style="text-align:center;margin-top:16px">乙打ちカメラ ${APP_VERSION} ・ <a href="https://www.otsuuchi.com/" target="_blank" rel="noopener" style="color:var(--moon)">乙打ちドットコム</a></p>`;
   $$('#settingsBody .seg').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=s.dataset.k;let v=b.dataset.v;
-    if(s.dataset.bool)v=v==='true';else if(!isNaN(parseFloat(v))&&k!=='res'&&k!=='codec'&&k!=='aspect')v=parseFloat(v);ST[k]=v;saveST();
-    if(k==='aspect'){setCanvasSize();if(VS.mode==='real')tryRealCamera()}if((k==='res'||k==='fps')&&VS.mode==='real')tryRealCamera();if(k==='acRate'&&AC&&!S.rec){try{AC.close()}catch(e){}AC=null}if(k==='fps'){VS.stream=null;if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter()}renderSettings();renderCamUI()}));
+    if(s.dataset.bool)v=v==='true';else if(!isNaN(parseFloat(v))&&k!=='res'&&k!=='codec'&&k!=='aspect'&&k!=='recMethod'&&k!=='sess')v=parseFloat(v);ST[k]=v;saveST();
+    if(k==='aspect'){setCanvasSize();if(VS.mode==='real')tryRealCamera()}if((k==='res'||k==='fps')&&VS.mode==='real')tryRealCamera();if(k==='sess'&&!S.rec){setPlaybackSession();if(AC){try{AC.close()}catch(e){}AC=null}}if(k==='fps'){VS.stream=null;if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter()}renderSettings();renderCamUI()}));
   $$('#settingsBody input[data-r]').forEach(r=>r.oninput=()=>{ST[r.dataset.r]=parseFloat(r.value);saveST();if(r.dataset.r==='syncMs')$('#syncV').textContent=(ST.syncMs>0?'+':'')+ST.syncMs+' ms'});
   $('#bkSave').onclick=saveBackup;$('#bkLoad').onclick=()=>$('#bkFile').click();$('#bkFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)loadBackup(f)};
   $('#showNotes').onclick=()=>openSheet('<h3>Android版の仕様</h3>'+NOTES_ALL);
