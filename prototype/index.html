@@ -241,6 +241,7 @@ svg{display:block}
 .pfStep b{width:22px;height:22px;border-radius:50%;background:var(--moon);color:#1a0e00;display:grid;place-items:center;font-size:12.5px;font-family:var(--num)}
 
 /* ---------- library ---------- */
+.titleR{display:flex;align-items:center;gap:8px}.siteLink{text-decoration:none;color:var(--moon);font-weight:500;font-family:inherit}
 .libTools{display:flex;align-items:center;gap:8px;margin-bottom:14px}
 #libGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .take{position:relative;aspect-ratio:9/14;border-radius:12px;overflow:hidden;background:var(--s1) center/cover;text-align:left}
@@ -478,7 +479,7 @@ svg{display:block}
     <!-- ===== LIBRARY ===== -->
     <section id="scr-library" class="screen">
       <div class="page">
-        <h2 class="title">ライブラリ<button class="chip" id="selBtn">選択</button></h2>
+        <h2 class="title">ライブラリ<span class="titleR"><a class="chip siteLink" href="https://www.otsuuchi.com/" aria-label="乙打ちドットコムへ">乙打ちドットコム<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 16L16 8M9 8h7v7"/></svg></a><button class="chip" id="selBtn">選択</button></span></h2>
         <div class="libTools"><div class="seg" id="segLib"><button data-v="all" class="on jp">すべて</button><button data-v="video" class="jp">動画</button><button data-v="photo" class="jp">写真</button></div><span class="spacer"></span><span class="muted small" id="libCount"></span></div>
         <div id="storageInfo" class="hint" style="margin:0 0 12px"></div>
         <div id="libGrid"></div>
