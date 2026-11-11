@@ -1557,8 +1557,13 @@ function renderLibrary(){renderStorage();const g=$('#libGrid');g.innerHTML='';co
     b.querySelector('b').textContent=t.title;b.onclick=()=>{if(S.selecting){S.picked.has(t.id)?S.picked.delete(t.id):S.picked.add(t.id);renderLibrary()}else openPlayer(t)};g.appendChild(b)}}
 $$('#segLib button').forEach(b=>b.onclick=()=>{S.libFilter=b.dataset.v;$$('#segLib button').forEach(x=>x.classList.toggle('on',x===b));renderLibrary()});
 $('#selBtn').onclick=()=>{S.selecting=!S.selecting;S.picked.clear();renderLibrary()};
-$('#selDelete').onclick=async()=>{if(!S.picked.size)return;for(const id of [...S.picked])await deleteTake(id);S.picked.clear();renderLibrary();toast('削除しました')};
+$('#selDelete').onclick=async()=>{if(!S.picked.size)return;if(!await confirmDelete(S.takes.filter(t=>S.picked.has(t.id))))return;for(const id of [...S.picked])await deleteTake(id);S.picked.clear();renderLibrary();toast('削除しました')};
 $('#selExport').onclick=()=>{const l=S.takes.filter(t=>S.picked.has(t.id));if(l.length)exportTakes(l)};
+/** 削除の確認。未保存のものが含まれるときは、そのことも書く */
+function confirmDelete(list){return new Promise(res=>{const n=list.length,un=list.filter(t=>!t.saved).length;
+  openSheet(`<h3>${n>1?n+'件を':''}削除しますか？</h3><p class="muted small">${un?`<b style="color:var(--moon)">${n>1?'うち'+un+'件は':'この動画は'}まだ写真アプリに保存していません。</b>`:''}削除すると元に戻せません。</p>
+  <div class="rv-btns"><button class="btn sec" style="flex:1" id="cdNo">やめる</button><button class="btn pri" style="flex:1;background:#e5484d;color:#fff" id="cdYes">削除</button></div>`,()=>res(false));
+  $('#cdNo').onclick=()=>{closeSheet()};$('#cdYes').onclick=()=>{res(true);closeSheet()}})}
 async function deleteTake(id){S.takes=S.takes.filter(t=>t.id!==id);await DB.del('takes',id);updateLastThumb()}
 
 const PL={urls:[]};
@@ -1578,7 +1583,7 @@ function openPlayer(t){closePlayerMedia();const m=$('#plMedia');m.className='pl-
   $('#plActions').innerHTML=acts.map(a=>`<button data-a="${a[0]}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${a[2]}</svg>${a[1]}</button>`).join('');
   $$('#plActions button').forEach(b=>b.onclick=async()=>{const k=b.dataset.a;
     if(k==='export')exportTakes([t]);
-    if(k==='delete'){await deleteTake(t.id);closePlayer();renderLibrary();toast('削除しました')}
+    if(k==='delete'){if(!await confirmDelete([t]))return;await deleteTake(t.id);closePlayer();renderLibrary();toast('削除しました')}
     if(k==='retake'){if(t.clipId&&t.trackId)setActiveClip(t.trackId,t.clipId);closePlayer();showScreen('camera');toast('同じクリップで撮影できます')}
     if(k==='compare')pickCompare(t);
     if(k==='post')openPostFlow(t)});
@@ -1789,7 +1794,7 @@ $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation
 
 /* ================= offline ================= */
 // 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
-const APP_VERSION='0.10.0（11/11 12:00）';
+const APP_VERSION='0.10.1（11/11 13:30）';
 if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
   const hadController=!!navigator.serviceWorker.controller;let reloading=false;
   window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
