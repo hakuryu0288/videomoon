@@ -1233,6 +1233,132 @@ async function fixMp4Duration(blob,fallbackSec){MP4INFO='';
   }catch(e){MP4INFO='解析エラー：'+e.message;return blob}
 }
 let MP4INFO='';
+/*MP4MUX-BEGIN*/
+/* ================= 新しい録画方式：無音の映像に、あとから音声を合成する =================
+ * 映像は再エンコードしない。映像データは Blob.slice() で元の録画を参照するだけで、メモリには読み込まない
+ * （読むのは見出し部分だけ）。出来上がりは「普通形式」のMP4で、長さの欄はすべてサンプル表から計算して書く。 */
+const mp4u={
+  dv:b=>new DataView(b.buffer,b.byteOffset,b.byteLength),
+  typ:(b,o)=>String.fromCharCode(b[o+4],b[o+5],b[o+6],b[o+7]),
+  each(b,start,end,cb){const dv=mp4u.dv(b);let o=start;while(o+8<=end){let size=dv.getUint32(o),hdr=8;
+    if(size===1){size=Number(dv.getBigUint64(o+8));hdr=16}else if(size===0)size=end-o;
+    if(size<hdr||o+size>end)break;cb(o,size,mp4u.typ(b,o),hdr);o+=size}},
+  find(b,s,e,t){let r=null;mp4u.each(b,s,e,(o,sz,tt,h)=>{if(!r&&tt===t)r={o,sz,h}});return r},
+  u32:v=>{const a=new Uint8Array(4);new DataView(a.buffer).setUint32(0,v>>>0);return a},
+  u16:v=>{const a=new Uint8Array(2);new DataView(a.buffer).setUint16(0,v);return a},
+  u64:v=>{const a=new Uint8Array(8);new DataView(a.buffer).setBigUint64(0,BigInt(v));return a},
+  str:s=>new TextEncoder().encode(s),zeros:n=>new Uint8Array(n),
+  cat(arr){let n=0;for(const a of arr)n+=a.length;const r=new Uint8Array(n);let o=0;for(const a of arr){r.set(a,o);o+=a.length}return r},
+  box(t,...kids){const body=mp4u.cat(kids);const r=new Uint8Array(8+body.length);new DataView(r.buffer).setUint32(0,r.length);r.set(mp4u.str(t),4);r.set(body,8);return r},
+  full(t,ver,flags,...kids){return mp4u.box(t,mp4u.u32((ver<<24)|flags),...kids)}};
+/** 録画したMP4（細切れ形式でも普通形式でも可）から、映像トラックの情報と全コマの位置・大きさ・長さを読む */
+async function mp4ReadVideo(vblob){const {dv:dvOf,typ,each,find}=mp4u;
+  const rd=async(o,n)=>new Uint8Array(await vblob.slice(o,Math.min(vblob.size,o+n)).arrayBuffer());
+  let moovAt=null;const moofs=[],top=[];
+  for(let o=0;o+8<=vblob.size;){const h=await rd(o,16);if(h.length<8)break;const dv=dvOf(h);let size=dv.getUint32(0),hdr=8;
+    if(size===1&&h.length>=16){size=Number(dv.getBigUint64(8));hdr=16}else if(size===0)size=vblob.size-o;
+    if(size<hdr)break;const t=typ(h,0);top.push(t);if(t==='moov')moovAt={o,size};else if(t==='moof')moofs.push({o,size});o+=size}
+  if(!moovAt)throw new Error('moovなし('+top.slice(0,6).join(',')+')');
+  const moov=await rd(moovAt.o,moovAt.size),mdv=dvOf(moov);
+  const mvhd=find(moov,8,moov.length,'mvhd');if(!mvhd)throw new Error('mvhdなし');
+  const mvTs=mdv.getUint32(mvhd.o+(moov[mvhd.o+8]===1?28:20));if(!mvTs)throw new Error('時間の単位が0');
+  const trex={};const mvex=find(moov,8,moov.length,'mvex');
+  if(mvex)each(moov,mvex.o+mvex.h,mvex.o+mvex.sz,(o,sz,t)=>{if(t==='trex')trex[mdv.getUint32(o+12)]={dur:mdv.getUint32(o+20),size:mdv.getUint32(o+24),flags:mdv.getUint32(o+28)}});
+  let V=null,nTrak=0;
+  each(moov,8,moov.length,(o,sz,t,h)=>{if(t!=='trak')return;nTrak++;if(V)return;
+    const tkhd=find(moov,o+h,o+sz,'tkhd'),mdia=find(moov,o+h,o+sz,'mdia');if(!tkhd||!mdia)return;
+    const mdhd=find(moov,mdia.o+mdia.h,mdia.o+mdia.sz,'mdhd'),hdlr=find(moov,mdia.o+mdia.h,mdia.o+mdia.sz,'hdlr'),minf=find(moov,mdia.o+mdia.h,mdia.o+mdia.sz,'minf');
+    if(!mdhd||!hdlr||!minf||typ(moov,hdlr.o+12)!=='vide')return;
+    const stbl=find(moov,minf.o+minf.h,minf.o+minf.sz,'stbl');const stsd=stbl&&find(moov,stbl.o+stbl.h,stbl.o+stbl.sz,'stsd');if(!stsd)return;
+    const keep=[];each(moov,minf.o+minf.h,minf.o+minf.sz,(o2,sz2,t2)=>{if(t2!=='stbl')keep.push(moov.slice(o2,o2+sz2))});
+    V={id:mdv.getUint32(tkhd.o+(moov[tkhd.o+8]===1?28:20)),tkhd:moov.slice(tkhd.o,tkhd.o+tkhd.sz),mdhd:moov.slice(mdhd.o,mdhd.o+mdhd.sz),
+      hdlr:moov.slice(hdlr.o,hdlr.o+hdlr.sz),keep,stsd:moov.slice(stsd.o,stsd.o+stsd.sz),stbl,codec:typ(moov,stsd.o+16),
+      ts:mdv.getUint32(mdhd.o+(moov[mdhd.o+8]===1?28:20)),S:[]}});
+  if(!V)throw new Error('映像トラックなし');if(!V.ts)throw new Error('映像の時間の単位が0');
+  if(moofs.length){ // 細切れ形式：断片ごとの表を読む
+    for(const m of moofs){const b=await rd(m.o,m.size),dv=dvOf(b);let prevEnd=null;
+      each(b,8,b.length,(o,sz,t,h)=>{if(t!=='traf')return;let mine=false,base=m.o,def={};
+        each(b,o+h,o+sz,(o2,sz2,t2)=>{
+          if(t2==='tfhd'){const fl=dv.getUint32(o2+8)&0xffffff,id=dv.getUint32(o2+12);mine=id===V.id;let p=o2+16;const tx=trex[id]||{};def={dur:tx.dur,size:tx.size,flags:tx.flags};
+            if(fl&1){base=Number(dv.getBigUint64(p));p+=8}else if(fl&0x20000)base=m.o;else base=prevEnd??m.o;
+            if(fl&2)p+=4;if(fl&8){def.dur=dv.getUint32(p);p+=4}if(fl&0x10){def.size=dv.getUint32(p);p+=4}if(fl&0x20){def.flags=dv.getUint32(p);p+=4}}
+          else if(t2==='trun'){const ver=b[o2+8],fl=dv.getUint32(o2+8)&0xffffff,n=dv.getUint32(o2+12);let p=o2+16;
+            let off=base;if(fl&1){off=base+dv.getInt32(p);p+=4}else if(prevEnd!=null)off=prevEnd;
+            let ff=null;if(fl&4){ff=dv.getUint32(p);p+=4}
+            for(let i=0;i<n;i++){const dur=(fl&0x100)?dv.getUint32((p+=4)-4):def.dur,size=(fl&0x200)?dv.getUint32((p+=4)-4):def.size;
+              let flags=(fl&0x400)?dv.getUint32((p+=4)-4):def.flags;if(i===0&&ff!=null)flags=ff;
+              let cto=0;if(fl&0x800){cto=ver===1?dv.getInt32(p):dv.getUint32(p);p+=4}
+              if(dur==null||size==null)throw new Error('断片の表に値がない');
+              if(mine)V.S.push({dur,size,sync:!((flags??0)&0x10000),cto,off});off+=size}
+            prevEnd=off}})})}
+  }else{ // 普通形式：サンプル表を読む
+    const sb=V.stbl,g=t=>find(moov,sb.o+sb.h,sb.o+sb.sz,t);
+    const stts=g('stts'),stsz=g('stsz'),stsc=g('stsc'),stco=g('stco'),co64=g('co64'),stss=g('stss'),ctts=g('ctts');
+    if(!stts||!stsz||!stsc||!(stco||co64))throw new Error('サンプル表が足りない');
+    const n=mdv.getUint32(stsz.o+16),fixed=mdv.getUint32(stsz.o+12);
+    const durs=[];for(let i=0,c=mdv.getUint32(stts.o+12);i<c;i++){const k=mdv.getUint32(stts.o+16+i*8),d=mdv.getUint32(stts.o+20+i*8);for(let j=0;j<k;j++)durs.push(d)}
+    const ctos=[];if(ctts){const v1=moov[ctts.o+8]===1;for(let i=0,c=mdv.getUint32(ctts.o+12);i<c;i++){const k=mdv.getUint32(ctts.o+16+i*8),d=v1?mdv.getInt32(ctts.o+20+i*8):mdv.getUint32(ctts.o+20+i*8);for(let j=0;j<k;j++)ctos.push(d)}}
+    const sync=stss?new Set():null;if(stss)for(let i=0,c=mdv.getUint32(stss.o+12);i<c;i++)sync.add(mdv.getUint32(stss.o+16+i*4));
+    const cb=stco||co64,nChunks=mdv.getUint32(cb.o+12),chunkOff=i=>stco?mdv.getUint32(stco.o+16+i*4):Number(mdv.getBigUint64(co64.o+16+i*8));
+    const sc=[];for(let i=0,c=mdv.getUint32(stsc.o+12);i<c;i++)sc.push([mdv.getUint32(stsc.o+16+i*12),mdv.getUint32(stsc.o+20+i*12)]);
+    let si=0,k=0,per=0;for(let ci=0;ci<nChunks&&si<n;ci++){while(k<sc.length&&sc[k][0]<=ci+1){per=sc[k][1];k++}let off=chunkOff(ci);
+      for(let j=0;j<per&&si<n;j++,si++){const size=fixed||mdv.getUint32(stsz.o+20+si*4);V.S.push({dur:durs[si]??durs[durs.length-1]??0,size,sync:sync?sync.has(si+1):true,cto:ctos[si]||0,off});off+=size}}}
+  const S=V.S;if(!S.length)throw new Error('映像のコマがない');
+  for(const s of S)if(s.off<0||s.off+s.size>vblob.size)throw new Error('映像データの位置が範囲外');
+  V.hasCto=S.some(s=>s.cto!==0);V.minCto=V.hasCto?S.reduce((a,s)=>Math.min(a,s.cto),Infinity):0;
+  let dts=0,presEnd=0;V.mediaDur=0;for(const s of S){presEnd=Math.max(presEnd,dts+s.cto+s.dur);dts+=s.dur}V.mediaDur=dts;
+  V.sec=(presEnd-V.minCto)/V.ts;V.mvTs=mvTs;V.mvhd=moov.slice(mvhd.o,mvhd.o+mvhd.sz);
+  V.fragments=moofs.length;V.keyframes=S.reduce((a,s)=>a+(s.sync?1:0),0);V.otherTracks=nTrak-1;return V}
+/** 映像（V）と音声（A）から普通形式のMP4を作る。V は mp4ReadVideo の結果（null なら音声だけのファイル）。
+ *  A={codec:'mp4a'|'Opus',rate,ch,frameDur,frames:[Uint8Array],asc,preSkip,skip:頭で捨てるサンプル数,play:再生するサンプル数,bitrate} */
+function mp4Build(vblob,V,A){const {dv:dvOf,u32,u16,u64,str,zeros,cat,box,full}=mp4u;
+  if(A&&!A.frames.length)A=null;if(!V&&!A)throw new Error('中身がない');
+  const mvTs=V?V.mvTs:1000,S=V?V.S:[];
+  const ftyp=box('ftyp',str('isom'),u32(512),str('isomiso2avc1mp41'));
+  const parts=[ftyp,null];let pos=ftyp.length+16;const vChunks=[],aChunks=[];let ai=0;
+  const putAudio=until=>{if(!A)return;const ac={n:0,dst:pos},fs=[];
+    while(ai<A.frames.length&&ai*A.frameDur<until){fs.push(A.frames[ai]);pos+=A.frames[ai].length;ai++;ac.n++}
+    if(ac.n){parts.push(cat(fs));aChunks.push(ac)}};
+  // データの並び：映像を約0.5秒ずつの塊にして、その後ろに同じ時間帯の音声を置く
+  if(V){let t=0,i=0;const CH=V.ts*0.5;
+    while(i<S.length){const c={n:0,dst:pos};let run={off:S[i].off,size:0},t0=t;
+      while(i<S.length&&(t-t0<CH||!c.n)){const s=S[i];if(s.off!==run.off+run.size){if(run.size)parts.push(vblob.slice(run.off,run.off+run.size));run={off:s.off,size:0}}run.size+=s.size;pos+=s.size;t+=s.dur;c.n++;i++}
+      if(run.size)parts.push(vblob.slice(run.off,run.off+run.size));vChunks.push(c);
+      putAudio(i>=S.length?Infinity:(t/V.ts)*A?.rate+(A?.skip||0))}}
+  else putAudio(Infinity);
+  const mdat=new Uint8Array(16),mh=new DataView(mdat.buffer);mh.setUint32(0,1);mdat.set(str('mdat'),4);mh.setBigUint64(8,BigInt(pos-ftyp.length));parts[1]=mdat;
+  const big=pos>0xFFFFFFFF,offs=cs=>big?full('co64',0,0,u32(cs.length),...cs.map(c=>u64(c.dst))):full('stco',0,0,u32(cs.length),...cs.map(c=>u32(c.dst)));
+  const stscOf=cs=>{const sc=[];cs.forEach((c,k)=>{const l=sc[sc.length-1];if(!l||l[1]!==c.n)sc.push([k+1,c.n])});return full('stsc',0,0,u32(sc.length),...sc.flatMap(e=>[u32(e[0]),u32(e[1]),u32(1)]))};
+  const rle=(arr,key)=>{const r=[];for(const s of arr){const l=r[r.length-1];if(l&&l[1]===s[key])l[0]++;else r.push([1,s[key]])}return r};
+  const traks=[];let movieDur=0,vDur=0,nextId=1;
+  if(V){const st=rle(S,'dur');const vk=[V.stsd,full('stts',0,0,u32(st.length),...st.flatMap(e=>[u32(e[0]),u32(e[1])]))];
+    if(V.hasCto){const ct=rle(S,'cto');vk.push(full('ctts',S.some(s=>s.cto<0)?1:0,0,u32(ct.length),...ct.flatMap(e=>[u32(e[0]),u32(e[1])])))}
+    if(S.some(s=>!s.sync)){const ss=[];S.forEach((s,k)=>{if(s.sync)ss.push(u32(k+1))});vk.push(full('stss',0,0,u32(ss.length),...ss))}
+    vk.push(stscOf(vChunks),full('stsz',0,0,u32(0),u32(S.length),...S.map(s=>u32(s.size))),offs(vChunks));
+    vDur=Math.round(V.sec*mvTs);movieDur=vDur;
+    const md=V.mdhd.slice(),mdv2=dvOf(md);if(md[8]===1)mdv2.setBigUint64(32,BigInt(V.mediaDur));else mdv2.setUint32(24,V.mediaDur);
+    const th=V.tkhd.slice(),thv=dvOf(th);if(th[8]===1)thv.setBigUint64(36,BigInt(vDur));else thv.setUint32(28,vDur);thv.setUint32(8,thv.getUint32(8)|3);
+    traks.push(box('trak',th,box('edts',full('elst',0,0,u32(1),u32(vDur),u32(V.minCto),u32(0x10000))),box('mdia',md,V.hdlr,box('minf',...V.keep,box('stbl',...vk)))));nextId=V.id+1}
+  let aSec=0;
+  if(A){const N=A.frames.length,aMedia=N*A.frameDur,play=Math.max(0,Math.min(A.play??(aMedia-A.skip),aMedia-A.skip));
+    let aDur=Math.round(play/A.rate*mvTs);if(V)aDur=Math.min(vDur,aDur);aSec=aDur/mvTs;movieDur=Math.max(movieDur,aDur);
+    const entry=(t4,child)=>box(t4,zeros(6),u16(1),zeros(8),u16(A.ch),u16(16),zeros(4),u32((A.rate&0xffff)<<16),child);
+    let se;if(A.codec==='mp4a'){const dsi=cat([new Uint8Array([5,A.asc.length]),A.asc]);
+        const dcd=cat([new Uint8Array([4,13+dsi.length,0x40,0x15,0,0,0]),u32(A.bitrate||192000),u32(A.bitrate||192000),dsi]);
+        const es=cat([new Uint8Array([3,3+dcd.length+3,0,0,0]),dcd,new Uint8Array([6,1,2])]);se=entry('mp4a',full('esds',0,0,es))}
+    else se=entry('Opus',box('dOps',new Uint8Array([0,A.ch]),u16(A.preSkip||0),u32(A.rate),u16(0),new Uint8Array([0])));
+    const stbl=box('stbl',full('stsd',0,0,u32(1),se),full('stts',0,0,u32(1),u32(N),u32(A.frameDur)),stscOf(aChunks),full('stsz',0,0,u32(0),u32(N),...A.frames.map(f=>u32(f.length))),offs(aChunks));
+    const id=nextId++,mat=cat([u32(0x10000),zeros(12),u32(0x10000),zeros(12),u32(0x40000000)]);
+    const tkhd=full('tkhd',0,3,zeros(8),u32(id),zeros(4),u32(aDur),zeros(8),u16(0),u16(1),u16(0x0100),zeros(2),mat,zeros(8));
+    const mdhd=full('mdhd',0,0,zeros(8),u32(A.rate),u32(aMedia),u16(0x55c4),u16(0));
+    const hdlr=full('hdlr',0,0,zeros(4),str('soun'),zeros(12),str('SoundHandler\0'));
+    const dinf=box('dinf',full('dref',0,0,u32(1),full('url ',0,1)));
+    traks.push(box('trak',tkhd,box('edts',full('elst',0,0,u32(1),u32(aDur),u32(A.skip),u32(0x10000))),box('mdia',mdhd,hdlr,box('minf',full('smhd',0,0,zeros(4)),dinf,stbl))))}
+  let mv;if(V){mv=V.mvhd.slice();const mvv=dvOf(mv);if(mv[8]===1)mvv.setBigUint64(32,BigInt(movieDur));else mvv.setUint32(24,movieDur);mvv.setUint32(mv[8]===1?116:104,nextId)}
+  else mv=full('mvhd',0,0,zeros(8),u32(mvTs),u32(movieDur),u32(0x10000),u16(0x0100),zeros(10),cat([u32(0x10000),zeros(12),u32(0x10000),zeros(12),u32(0x40000000)]),zeros(24),u32(nextId));
+  parts.push(box('moov',mv,...traks));
+  return {blob:new Blob(parts,{type:V?'video/mp4':'audio/mp4'}),sec:movieDur/mvTs,audioSec:aSec}}
+/*MP4MUX-END*/
 /* ================= recording ================= */
 function pickMime(){const c=['video/mp4;codecs=avc1.42E01F,mp4a.40.2','video/mp4;codecs=avc1,mp4a','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
   for(const m of c){try{if(MediaRecorder.isTypeSupported(m))return m}catch(e){}}return ''}
