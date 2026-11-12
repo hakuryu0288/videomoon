@@ -108,6 +108,16 @@ async def main():
                 await pg.reload(); await pg.wait_for_timeout(1200)
                 d = await pg.evaluate("async()=>{const t=S.takes[0];const v=document.createElement('video');v.muted=true;v.src=URL.createObjectURL(t.blob);await new Promise((a,b)=>{v.onloadedmetadata=a;v.onerror=()=>b(new Error('再生できない'));setTimeout(()=>b(new Error('時間切れ')),8000)});return v.duration}")
                 ok('開き直しても再生できる', abs(d - r2['dur']) < 0.2, f'{d:.2f}s')
+                ok('調整後も動画の数は変わらない', await pg.evaluate('S.takes.length') == 1)
+                ok('詳細に調整の所要時間', '音の調整+100ms' in (await pg.evaluate('S.takes[0].lenInfo')))
+                # 調整の保存中にアプリを閉じた場合（新しい記録が書きかけ）→ 元の動画が残る
+                await pg.evaluate("async()=>{const t=S.takes[0];await DB.put('takes',{...t,id:'half1',blob:new Blob([t.blob.slice(0,1000)],{type:'video/mp4'}),replacing:t.id,pending:true})}")
+                await pg.reload(); await pg.wait_for_timeout(1200)
+                ok('書きかけで閉じても元の動画が残る', await pg.evaluate("S.takes.length===1&&S.takes[0].id!=='half1'&&S.takes[0].blob.size>100000"))
+                # 新しい記録は書き終わったが、古い記録を消す前に閉じた場合 → 新しい方だけ残る
+                old_id = await pg.evaluate("async()=>{const t=S.takes[0];await DB.put('takes',{...t,id:'done1',replacing:t.id,pending:false});return t.id}")
+                await pg.reload(); await pg.wait_for_timeout(1200)
+                ok('書き終わりで閉じたら新しい方だけ残る', await pg.evaluate("S.takes.length===1&&S.takes[0].id==='done1'&&!S.takes[0].replacing"))
                 await pg.click('.tab[data-tab=camera]'); await pg.wait_for_timeout(400); await pg.evaluate(SETUP)
                 print('音ズレ補正の設定：-80ms、途中で手動停止、プリロール1秒')
                 await pg.evaluate("()=>{ST.syncMs=-80;const tr=S.tracks.find(t=>t.isSample);tr.clips[0].preroll=1}")
