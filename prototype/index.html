@@ -102,7 +102,8 @@ svg{display:block}
 .chip.accent{color:var(--moon);border-color:rgba(255,138,0,.4)}
 .chip.on{background:var(--moon);color:#1a0e00;border-color:var(--moon)}
 .spacer{flex:1}
-#recTC{font-family:var(--num);font-size:16px;font-weight:600;letter-spacing:.04em;display:flex;align-items:center;gap:6px}
+#recTC{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:16px;font-weight:600;letter-spacing:.04em;display:flex;align-items:center;gap:6px;flex:none;white-space:nowrap}
+#tcText{display:inline-block;min-width:5.6em;text-align:left}
 #recTC .dot{width:9px;height:9px;border-radius:50%;background:var(--dim)}
 .recording #recTC .dot{background:var(--rec);animation:blink 1s steps(2) infinite}
 .recording #recTC{color:#fff}
@@ -110,8 +111,8 @@ svg{display:block}
 #clipChip{margin-top:8px;max-width:100%;height:34px;border-radius:17px;padding:0 12px 0 8px;background:rgba(20,20,28,.72);border:1px solid rgba(42,42,56,.9);display:inline-flex;align-items:center;gap:8px;font-size:13px}
 #clipChip .ico{width:22px;height:22px;border-radius:50%;background:var(--moon);color:#1a0e00;display:grid;place-items:center;flex:none}
 #clipChip .ico svg{width:13px;height:13px}
-#clipChip .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#clipChip .r{color:var(--mu);font-family:var(--num);font-size:13.5px}
+#clipChip .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+#clipChip .r{color:var(--mu);font-family:var(--num);font-size:13.5px;white-space:nowrap;flex:none}
 #recBar{display:none;margin-top:8px;height:34px;border-radius:8px;background:rgba(20,20,28,.6);position:relative;overflow:hidden}
 .recording #recBar.has{display:block}
 #recBar canvas{position:absolute;inset:0;width:100%;height:100%}
@@ -328,6 +329,10 @@ svg{display:block}
 .ls .cam-top .spacer{order:3}
 .ls #recTC{order:4}
 .ls #recBar{order:5;flex:1 1 100%;margin-top:2px}
+/* 録画中：設定のチップは隠し（録画中は変えられない）、曲・タイムコード・波形の位置を固定する（数字の幅で行が折り返して表示が跳ねるのを防ぐ） */
+.recording .cam-top .chip{display:none!important}
+.recording.ls #clipChip{flex:1 1 0}
+.recording.ls #sideInfo{top:96px}
 .ls #sideInfo{right:calc(120px + var(--sr));top:58px}
 .ls #demoTag{left:calc(var(--rail) + 10px + var(--sl));top:auto;bottom:66px}
 .ls #warnTag{left:calc(var(--rail) + 10px + var(--sl));top:58px}
@@ -1822,7 +1827,7 @@ $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation
 
 /* ================= offline ================= */
 // 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
-const APP_VERSION='0.10.2（11/12 15:30）';
+const APP_VERSION='0.10.3（11/13 23:00）';
 if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
   const hadController=!!navigator.serviceWorker.controller;let reloading=false;
   window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
