@@ -1458,6 +1458,7 @@ $('#recBtn').onclick=async()=>{if(!S.rec&&!S.counting&&S.mode==='video')freshAud
 function recBitrate(){let w,h;const st=VS.mode==='real'&&VS.track&&VS.track.getSettings?VS.track.getSettings():null;
   if(st&&st.width){w=st.width;h=st.height}else[w,h]=[demoCv.width,demoCv.height];return clamp(w*h*ST.fps*0.18,6e6,50e6)}
 async function startRec(){if(typeof MediaRecorder==='undefined'){toast('このブラウザは録画に対応していません');return}
+  await keepAwake(true);if(!WL.s&&!WL.warned){WL.warned=true;toast('長く撮るときは、iPhoneの設定「画面表示と明るさ」→「自動ロック」を長めにしてください（自動ロックされると録画が止まります）',6000)}
   const a=getActiveClip();if(a){try{await ensureBuffer(a.tr);await bufForCtx(a.tr)}catch(e){toast('音源を読み込めませんでした');return}}
   ppSel=null;renderPro();$('#tabbar').classList.add('hide');app.classList.add('recording');
   if(ST.countdown){const ok=await countdown(ST.countdown);if(!ok){app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}}
@@ -1492,19 +1493,20 @@ async function startRec(){if(typeof MediaRecorder==='undefined'){toast('この�
 function stopRec(why){const r=S.rec;if(!r)return;clearTimeout(r.endTimer);r.dur=r.started?(performance.now()-r.t0)/1000:0;r.why=why;
   if(r.music){try{r.music.mon.stop()}catch(e){}try{if(r.music.rs)r.music.rs.stop()}catch(e){}}
   if(r.started&&r.mr.state!=='inactive')r.mr.stop();else finishRec(r)}
-async function finishRec(r){S.rec=null;setCanvasSize();layoutGuides();app.classList.remove('recording');$('#tabbar').classList.remove('hide');drawMoon(0);$('#tcText').textContent='00:00:00';
-  if(!r.started||!r.chunks.length||r.dur<.3){toast('録画が短すぎるため保存しませんでした');return}
+async function finishRec(r){S.saving=(S.saving||0)+1;try{await finishRecInner(r)}finally{S.saving--}}
+async function finishRecInner(r){S.rec=null;setCanvasSize();layoutGuides();app.classList.remove('recording');$('#tabbar').classList.remove('hide');drawMoon(0);$('#tcText').textContent='00:00:00';
+  if(!r.started||!r.chunks.length||r.dur<.3){toast(r.hidden?'画面が切り替わったため録画を止めました（短すぎるため保存していません）':'録画が短すぎるため保存しませんでした',4000);return}
   let blob=new Blob(r.chunks,{type:(r.mime||'video/webm').split(';')[0]});
   const rawBlob=blob;let made=null,newErr='';
   if(r.useNew){busy(true,'動画を仕上げています…');try{made=await buildTake(blob,r);blob=made.blob}catch(e){newErr='新方式でエラー：'+(e&&e.message||e)}busy(false)}
   if(!made)blob=await fixMp4Duration(blob,r.dur); // 従来方式：iPhoneで長さが「1,988時間」などになるのを防ぐ
-  const lenFixed=blob!==rawBlob||/修正[1-9]/.test(MP4INFO),lenInfo=(made?made.info:(newErr?newErr+'\n':'')+MP4INFO)+`\n音声エンジン${AC?AC.sampleRate:'-'}Hz・${navigator.audioSession?'AudioSession:'+navigator.audioSession.type:'AudioSessionなし'}・${r.mime}`;
+  const lenFixed=blob!==rawBlob||/修正[1-9]/.test(MP4INFO),lenInfo=(made?made.info:(newErr?newErr+'\n':'')+MP4INFO)+`\n画面ロック防止:${WL.s?'有効':WL.err||'無効'}${r.hidden?'・画面が切り替わって停止':''}・音声エンジン${AC?AC.sampleRate:'-'}Hz・${navigator.audioSession?'AudioSession:'+navigator.audioSession.type:'AudioSessionなし'}・${r.mime}`;
   if(made)r.dur=made.sec;
   const a=r.clip;const n=S.takes.filter(t=>t.kind==='video'&&a&&t.clipId===a.c.id).length+1;
   const take={id:uid(),kind:'video',blob,mime:blob.type,thumb:r.thumb||grabThumb(),created:Date.now(),dur:r.dur,fps:r.fps,res:ST.res,aspect:r.aspect,
     title:a?`${a.c.name} ・ テイク ${n}`:'動画',lenFixed,lenInfo,method:made?'new':'old',sync:made?made.sync:null,blurUsed:ST.blur,trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:VS.mode==='demo'?ST.scene:null};
   S.takes.unshift(take);await DB.put('takes',take);updateLastThumb();askPersist();
-  const warn=newErr&&a?'音声を合成できませんでした。設定の「録画方式」を「従来」にすると音入りで撮れます':made&&made.lost?'録画の終わりが欠けている可能性があります。再生して確認してください':'';
+  const warn=r.hidden?'画面が切り替わったため、そこまでで録画を止めて保存しました':newErr&&a?'音声を合成できませんでした。設定の「録画方式」を「従来」にすると音入りで撮れます':made&&made.lost?'録画の終わりが欠けている可能性があります。再生して確認してください':'';
   if(warn)setTimeout(()=>toast(warn,5000),1400);
   if(ST.continuous&&!S.contStop){toast(`テイク ${n} を保存。続けて撮影します`);await sleep(1200);if(S.tab==='camera'&&!S.rec&&!S.contStop)startRec();return}
   if(ST.autoReview)showReview(take);else if(!warn)toast('ライブラリに保存しました')}
@@ -1809,9 +1811,18 @@ function renderNotes(){$('#noteBody').innerHTML=(NOTES[S.tab]||'')+'<hr style="b
   (EMBED?`<h2>実際のカメラで使うには</h2><p>このページはプレビュー枠の中で動いているため、カメラが使えません。スマホで <b>cam.otsuuchi.com</b> を開くと、実際のカメラで撮影できます。</p>`:'')}
 
 /* ================= navigation ================= */
+/* ---- 画面の自動ロックを防ぐ（カメラ画面にいるあいだ）。自動ロックされると録画が止まり、iPhoneではアプリが読み込み直されることがある ---- */
+const WL={s:null,err:'',warned:false};
+async function keepAwake(on){try{
+  if(on){if(WL.s||document.visibilityState!=='visible')return;if(!('wakeLock' in navigator)){WL.err='非対応';return}
+    WL.s=await navigator.wakeLock.request('screen');WL.err='';WL.s.addEventListener('release',()=>{WL.s=null})}
+  else if(WL.s){const w=WL.s;WL.s=null;await w.release()}}catch(e){WL.s=null;WL.err=(e&&e.name)||'失敗'}}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'){if(S.tab==='camera')keepAwake(true)}
+  else if(S.rec){S.rec.hidden=true;stopRec('hidden')}}); // 録画中に画面が切り替わった・ロックされた：そこまでを保存する
 function showScreen(tab){if(S.rec)return;if(S.tab==='trim'&&tab!=='trim')stopTrim();S.tab=tab;$$('.screen').forEach(s=>s.classList.toggle('active',s.id==='scr-'+tab));
   $$('.tab').forEach(t=>t.classList.toggle('on',t.dataset.tab===(tab==='trim'?'tracks':tab)));$('#tabbar').style.display=tab==='trim'?'none':'flex';
-  if(tab==='camera'){startLoop();renderCamUI()}else stopLoop();
+  if(tab==='camera'){startLoop();renderCamUI();keepAwake(true)}else{stopLoop();keepAwake(false)}
   if(tab==='tracks')renderTracks();if(tab==='library')renderLibrary();if(tab==='settings')renderSettings();if(tab==='trim')requestAnimationFrame(drawWave);renderNotes()}
 $$('.tab').forEach(t=>t.onclick=()=>showScreen(t.dataset.tab));
 window.addEventListener('resize',()=>{layoutGuides();if(S.tab==='trim')drawWave()});
@@ -1827,7 +1838,8 @@ $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation
 
 /* ================= offline ================= */
 // 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
-const APP_VERSION='0.10.3（11/13 23:00）';
+const UPD={pending:false};
+const APP_VERSION='0.10.4（11/14 02:30）';
 if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
   const hadController=!!navigator.serviceWorker.controller;let reloading=false;
   window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
@@ -1837,10 +1849,14 @@ if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location
     setInterval(check,15*60*1000)}).catch(()=>{})});
   // 新しい版が入ったら、録画中・編集中でなければ読み込み直す
   navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!hadController||reloading)return;
-    const busyNow=()=>S.rec||S.counting||S.tab==='trim'||$('#sheetLayer').classList.contains('open');
-    const go=()=>{reloading=true;location.reload()};
-    if(!busyNow()){toast('新しいバージョンに更新します');setTimeout(go,900)}
-    else{const iv=setInterval(()=>{if(!busyNow()){clearInterval(iv);toast('新しいバージョンに更新します');setTimeout(go,900)}},2000)}})}
+    // 撮影中・保存中・編集中は読み込み直さない。カメラ画面でも読み込み直さない（撮影の直前直後に消えると困るので）。
+    // 代わりに、アプリが裏に回ったとき（ホームに戻る・ほかのアプリを開く）に切り替える
+    const busyNow=()=>S.rec||S.counting||S.saving||S.tab==='trim'||S.tab==='camera'||$('#sheetLayer').classList.contains('open')||$('#busy').classList.contains('on')||$('#player').classList.contains('open');
+    const go=()=>{if(reloading)return;reloading=true;location.reload()};
+    UPD.pending=true;
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&!S.rec&&!S.saving&&!$('#busy').classList.contains('on'))go()});
+    if(!busyNow()){toast('新しいバージョンに更新します');setTimeout(()=>{if(!busyNow())go()},900)}
+    else toast('新しいバージョンを受け取りました。次にアプリを開き直したときに切り替わります',4000)})}
 
 /* ================= boot ================= */
 (async()=>{setInterval(()=>{const d=new Date();$('#sbTime').textContent=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')},10000);
