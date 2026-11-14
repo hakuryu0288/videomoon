@@ -562,6 +562,14 @@ const DB={db:null,
   clear(s){return DB.tx(s,'readwrite',st=>st.clear())}
 };
 const LS={get(k,d){try{const v=localStorage.getItem('vm_'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('vm_'+k,JSON.stringify(v))}catch(e){}}};
+/** 診断ログ：録画・保存・画面の切り替え・読み込み直しを時刻つきで最大150行まで残す（設定の「診断ログ」で見られる）。端末の外には送らない */
+const LOGK='vm_log';
+function log(msg){try{const d=new Date(),t=`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}.${Math.floor(d.getMilliseconds()/100)}`;
+  const a=(localStorage.getItem(LOGK)||'').split('\n').filter(Boolean);a.push(t+' '+msg);localStorage.setItem(LOGK,a.slice(-150).join('\n'))}catch(e){}}
+const mb=n=>(n/1048576).toFixed(1)+'MB';
+window.addEventListener('error',e=>log('エラー '+(e.message||'')+' @'+(e.lineno||'')));
+window.addEventListener('unhandledrejection',e=>log('エラー(非同期) '+((e.reason&&e.reason.message)||e.reason)));
+window.addEventListener('pagehide',e=>log('ページを離れる'+(e.persisted?'（保留）':'')));
 
 /* ================= state ================= */
 const ST=Object.assign({fps:60,res:'1080',aspect:'auto',stab:true,flicker:50,countdown:3,grid:true,zebra:false,zebraLv:95,peaking:false,histo:true,
@@ -1462,14 +1470,14 @@ async function startRec(){if(typeof MediaRecorder==='undefined'){toast('この�
   const a=getActiveClip();if(a){try{await ensureBuffer(a.tr);await bufForCtx(a.tr)}catch(e){toast('音源を読み込めませんでした');return}}
   ppSel=null;renderPro();$('#tabbar').classList.add('hide');app.classList.add('recording');
   if(ST.countdown){const ok=await countdown(ST.countdown);if(!ok){app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}}
-  const vt=videoTrackForRecording();if(!vt){toast('映像を取得できませんでした');app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}
+  log(`録画開始の準備`);const vt=videoTrackForRecording();if(!vt){toast('映像を取得できませんでした');app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}
   // 新方式：無音の映像だけを録画して、音声は保存のときに合成する。音声の圧縮が使えない端末や「従来」を選んだ場合は、音を混ぜて録画する
   const enc=ST.recMethod==='old'?false:await audioEncSupport();let mime=enc?pickMime(true):'';const useNew=!!enc&&/mp4/.test(mime);if(!useNew)mime=pickMime(false);
   const ctx=ac();const tracks=[vt];let dest=null;if(a&&!useNew){dest=ctx.createMediaStreamDestination();tracks.push(dest.stream.getAudioTracks()[0])}
   let mr;try{mr=new MediaRecorder(new MediaStream(tracks),mime?{mimeType:mime,videoBitsPerSecond:recBitrate()}:{})}catch(e){toast('録画を開始できませんでした');app.classList.remove('recording');$('#tabbar').classList.remove('hide');return}
   const r={mr,chunks:[],mime:mr.mimeType||mime,useNew,enc,pos0:0,posRaw:0,startMs:0,clip:a,t0:0,dur:0,thumb:null,started:false,isSample:a&&a.tr.isSample,fps:ST.fps,aspect:ASP()};S.rec=r;
-  mr.ondataavailable=e=>{if(e.data&&e.data.size)r.chunks.push(e.data)};
-  mr.onstop=()=>finishRec(r);
+  mr.ondataavailable=e=>{if(e.data&&e.data.size)r.chunks.push(e.data);log(`録画データ受け取り ${e.data?mb(e.data.size):'なし'}`)};
+  mr.onstop=()=>{log(`録画が止まった・データ${r.chunks.length}個`);finishRec(r)};
   const musicBuf=a?await bufForCtx(a.tr):null;if(a&&S.rec!==r)return;
   if(a){CLK.k=-Infinity;const c=a.c,buf=musicBuf,pre=Math.min(c.preroll||0,c.start),len=c.end-c.start,t0=ctx.currentTime+.15,sync=(ST.syncMs||0)/1000;
     // monitor (speaker) path
@@ -1486,30 +1494,58 @@ async function startRec(){if(typeof MediaRecorder==='undefined'){toast('この�
     const wait=(r.recAt-ctx.currentTime)*1000-25;await sleep(Math.max(0,wait));clearInterval(clk);if(S.rec!==r)return;
     // 新方式：録画を始める瞬間に、曲のどこが鳴っているかを記録する（これが動画の0秒になる）
     const pNow=clkNow(),pRaw=ctx.currentTime,tCall=performance.now();
-    mr.start();r.started=true;r.t0=performance.now();r.startMs=r.t0-tCall;r.pos0=(c.start-pre)+(pNow-t0);r.posRaw=(c.start-pre)+(pRaw-t0);
+    mr.start();r.started=true;r.t0=performance.now();r.startMs=r.t0-tCall;log(`録画開始（${useNew?'新方式':'従来'}・曲あり・${r.mime}）`);r.pos0=(c.start-pre)+(pNow-t0);r.posRaw=(c.start-pre)+(pRaw-t0);
     r.endTimer=setTimeout(()=>stopRec('end'),(len*1000)+120)}
-  else{$('#recBar').classList.remove('has');mr.start();r.started=true;r.t0=performance.now()}
+  else{$('#recBar').classList.remove('has');mr.start();r.started=true;r.t0=performance.now();log(`録画開始（${useNew?'新方式':'従来'}・曲なし）`)}
   setTimeout(()=>{if(S.rec===r)r.thumb=grabThumb()},700)}
-function stopRec(why){const r=S.rec;if(!r)return;clearTimeout(r.endTimer);r.dur=r.started?(performance.now()-r.t0)/1000:0;r.why=why;
+function stopRec(why){const r=S.rec;if(!r)return;log(`録画停止の指示（${why||'不明'}）・録画状態:${r.mr&&r.mr.state}`);clearTimeout(r.endTimer);r.dur=r.started?(performance.now()-r.t0)/1000:0;r.why=why;
   if(r.music){try{r.music.mon.stop()}catch(e){}try{if(r.music.rs)r.music.rs.stop()}catch(e){}}
   if(r.started&&r.mr.state!=='inactive')r.mr.stop();else finishRec(r)}
 async function finishRec(r){S.saving=(S.saving||0)+1;try{await finishRecInner(r)}finally{S.saving--}}
 async function finishRecInner(r){S.rec=null;setCanvasSize();layoutGuides();app.classList.remove('recording');$('#tabbar').classList.remove('hide');drawMoon(0);$('#tcText').textContent='00:00:00';
-  if(!r.started||!r.chunks.length||r.dur<.3){toast(r.hidden?'画面が切り替わったため録画を止めました（短すぎるため保存していません）':'録画が短すぎるため保存しませんでした',4000);return}
-  let blob=new Blob(r.chunks,{type:(r.mime||'video/webm').split(';')[0]});
-  const rawBlob=blob;let made=null,newErr='';
-  if(r.useNew){busy(true,'動画を仕上げています…');try{made=await buildTake(blob,r);blob=made.blob}catch(e){newErr='新方式でエラー：'+(e&&e.message||e)}busy(false)}
-  if(!made)blob=await fixMp4Duration(blob,r.dur); // 従来方式：iPhoneで長さが「1,988時間」などになるのを防ぐ
-  const lenFixed=blob!==rawBlob||/修正[1-9]/.test(MP4INFO),lenInfo=(made?made.info:(newErr?newErr+'\n':'')+MP4INFO)+`\n画面ロック防止:${WL.s?'有効':WL.err||'無効'}${r.hidden?'・画面が切り替わって停止':''}・音声エンジン${AC?AC.sampleRate:'-'}Hz・${navigator.audioSession?'AudioSession:'+navigator.audioSession.type:'AudioSessionなし'}・${r.mime}`;
-  if(made)r.dur=made.sec;
-  const a=r.clip;const n=S.takes.filter(t=>t.kind==='video'&&a&&t.clipId===a.c.id).length+1;
-  const take={id:uid(),kind:'video',blob,mime:blob.type,thumb:r.thumb||grabThumb(),created:Date.now(),dur:r.dur,fps:r.fps,res:ST.res,aspect:r.aspect,
-    title:a?`${a.c.name} ・ テイク ${n}`:'動画',lenFixed,lenInfo,method:made?'new':'old',sync:made?made.sync:null,blurUsed:ST.blur,trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:VS.mode==='demo'?ST.scene:null};
-  S.takes.unshift(take);await DB.put('takes',take);updateLastThumb();askPersist();
-  const warn=r.hidden?'画面が切り替わったため、そこまでで録画を止めて保存しました':newErr&&a?'音声を合成できませんでした。設定の「録画方式」を「従来」にすると音入りで撮れます':made&&made.lost?'録画の終わりが欠けている可能性があります。再生して確認してください':'';
+  if(!r.started||!r.chunks.length||r.dur<.3){log('短すぎるため保存せず');toast(r.hidden?'画面が切り替わったため録画を止めました（短すぎるため保存していません）':'録画が短すぎるため保存しませんでした',4000);return}
+  const blob=new Blob(r.chunks,{type:(r.mime||'video/webm').split(';')[0]}),a=r.clip;
+  // 仕上げに使う情報（あとから復元するときにも使う）
+  const meta={useNew:r.useNew,enc:r.enc,pos0:r.pos0,posRaw:r.posRaw,startMs:r.startMs,dur:r.dur,fps:r.fps,aspect:r.aspect,mime:r.mime,thumb:r.thumb||grabThumb(),
+    hidden:!!r.hidden,trackId:a?a.tr.id:null,clipId:a?a.c.id:null,syncMs:ST.syncMs||0,res:ST.res,blur:ST.blur,scene:VS.mode==='demo'?ST.scene:null,wl:WL.s?'有効':WL.err||'無効'};
+  // まず録画そのものを保存しておく（仕上げの途中でアプリが閉じても、次に開いたときに復元できるように）
+  busy(true,'録画を保存しています…');const raw={id:'raw_'+uid(),rawPending:true,blob,created:Date.now(),meta};
+  const ok=await DB.put('takes',raw)!=null;log(`録画そのものを保存 ${mb(blob.size)} ${ok?'OK':'失敗'}`);
+  const take=await processRecording(blob,meta,false);
+  if(ok)await DB.del('takes',raw.id);
+  afterTakeSaved(take)}
+const withTimeout=(p,ms,what)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(what+'が'+Math.round(ms/1000)+'秒で終わらない')),ms))]);
+/** 録画を仕上げてライブラリに保存する（音の合成など）。recovered＝前回保存しきれなかった録画の復元 */
+async function processRecording(blob,meta,recovered){
+  const tr=meta.trackId?S.tracks.find(t=>t.id===meta.trackId):null,c=tr?tr.clips.find(x=>x.id===meta.clipId):null,a=tr&&c?{tr,c}:null;
+  const r={...meta,clip:a};let made=null,newErr='',out=blob;MP4INFO='';
+  if(meta.useNew&&a&&!meta.enc)meta.enc=await audioEncSupport();
+  if(meta.useNew){busy(true,'動画を仕上げています…');const t0=performance.now();log('仕上げ開始');
+    try{made=await withTimeout(buildTake(blob,r),Math.max(30000,meta.dur*3000),'仕上げ');out=made.blob;log(`仕上げ完了 ${Math.round(performance.now()-t0)}ms`)}
+    catch(e){newErr='新方式でエラー：'+(e&&e.message||e);log(newErr)}}
+  if(!made){busy(true,'動画を保存しています…');out=await fixMp4Duration(blob,meta.dur)} // 従来方式・失敗時：iPhoneで長さが「1,988時間」などになるのを防ぐ
+  const lenInfo=(made?made.info:(newErr?newErr+'\n':'')+MP4INFO)+`\n画面ロック防止:${meta.wl}${meta.hidden?'・画面が切り替わって停止':''}${recovered?'・前回の録画を復元':''}・音声エンジン${AC?AC.sampleRate:'-'}Hz・${navigator.audioSession?'AudioSession:'+navigator.audioSession.type:'AudioSessionなし'}・${meta.mime}`;
+  // 音を合成できなかったときも、曲の位置は覚えておく（再生画面の「音ズレを直す」で、あとから音を入れられる）
+  const sync=made?made.sync:(meta.useNew&&a&&meta.pos0!=null?{v:1,pos0:meta.pos0,syncMs:meta.syncMs,adjMs:0,start:c.start,end:c.end,fadeIn:c.fadeIn||0,fadeOut:c.fadeOut||0}:null);
+  const n=S.takes.filter(t=>t.kind==='video'&&a&&t.clipId===a.c.id).length+1;
+  const take={id:uid(),kind:'video',blob:out,mime:out.type,thumb:meta.thumb,created:Date.now(),dur:made?made.sec:meta.dur,fps:meta.fps,res:meta.res,aspect:meta.aspect,
+    title:a?`${a.c.name} ・ テイク ${n}`:'動画',lenFixed:out!==blob,lenInfo,method:made?'new':'old',sync,audioMissing:!made&&!!sync,blurUsed:meta.blur,trackName:a?a.tr.name:'',trackId:a?a.tr.id:null,clipId:a?a.c.id:null,scene:meta.scene};
+  busy(true,'ライブラリに保存しています…');const ok=await DB.put('takes',take)!=null;busy(false);log(`ライブラリに保存 ${mb(out.size)} ${ok?'OK':'失敗'}`);
+  if(!ok){toast('保存できませんでした。端末の空き容量を確認してください',5000)}
+  S.takes.unshift(take);updateLastThumb();askPersist();
+  take._warn=meta.hidden?'画面が切り替わったため、そこまでで録画を止めて保存しました':newErr&&a?'音を合成できませんでした。再生画面の「音を入れ直す」で、あとから音を入れられます':made&&made.lost?'録画の終わりが欠けている可能性があります。再生して確認してください':'';
+  return take}
+async function afterTakeSaved(take){const warn=take._warn;delete take._warn;const a=take.clipId;
   if(warn)setTimeout(()=>toast(warn,5000),1400);
-  if(ST.continuous&&!S.contStop){toast(`テイク ${n} を保存。続けて撮影します`);await sleep(1200);if(S.tab==='camera'&&!S.rec&&!S.contStop)startRec();return}
-  if(ST.autoReview)showReview(take);else if(!warn)toast('ライブラリに保存しました')}
+  if(ST.continuous&&!S.contStop){toast('テイクを保存。続けて撮影します');await sleep(1200);if(S.tab==='camera'&&!S.rec&&!S.contStop)startRec();return}
+  if(ST.autoReview){log('確認画面を表示');showReview(take)}else if(!warn)toast('ライブラリに保存しました')}
+/** 前回、仕上げの途中で閉じてしまった録画を復元する */
+async function recoverRaw(){const list=S.rawPending||[];S.rawPending=[];if(!list.length)return;
+  S.saving=(S.saving||0)+1;try{for(const raw of list){log('前回の録画を復元 '+mb(raw.blob.size));
+    try{const take=await processRecording(raw.blob,raw.meta||{dur:0,mime:raw.blob.type},true);await DB.del('takes',raw.id);take._warn='';}
+    catch(e){log('復元できず '+(e&&e.message||e))}}
+    busy(false);toast(`前回保存しきれなかった録画を${list.length}件復元しました。ライブラリを確認してください`,5000);if(S.tab==='library')renderLibrary()}
+  finally{S.saving--}}
 function grabThumb(){const src=sourceEl(),land=ASP()==='16:9',c=document.createElement('canvas');c.width=land?320:180;c.height=land?180:320;
   try{c.getContext('2d').drawImage(src,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.7)}catch(e){return ''}}
 function drawRecWave(a){const cv=$('#recWave');requestAnimationFrame(()=>{const p=S.peaks.get(a.tr.id),d=a.tr.duration;drawMiniWave(cv,p,(a.c.start-(a.c.preroll||0))/d,a.c.end/d,'#4a4a62')})}
@@ -1552,6 +1588,7 @@ async function loadTakes(){let rows=await DB.all('takes');S.badTakes=0;
   const byId=new Map(rows.map(r=>[r.id,r]));
   for(const r of [...rows]){if(r.replacing&&byId.has(r.replacing)){if(r.pending){rows=rows.filter(x=>x!==r);DB.del('takes',r.id)}else{rows=rows.filter(x=>x.id!==r.replacing);await DB.del('takes',r.replacing);delete r.replacing;DB.put('takes',r)}}
     else if(r.pending||r.replacing){r.pending=false;delete r.replacing;DB.put('takes',r)}}
+  S.rawPending=rows.filter(r=>r.rawPending);rows=rows.filter(r=>!r.rawPending);
   S.takes=rows.sort((a,b)=>b.created-a.created);updateLastThumb();
   if(S.badTakes)setTimeout(()=>toast(`読み込めなかった動画が${S.badTakes}件あります`,4000),1500)}
 const IOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -1590,7 +1627,7 @@ function openPlayer(t){closePlayerMedia();const m=$('#plMedia');m.className='pl-
   $('#plMeta').textContent=(t.kind==='video'?`${t.dur.toFixed(1)}秒 ・ ${t.fps}fps ・ ${resL} ・ ${t.trackName||'音声なし'}`:`写真 ・ ${t.res} ・ ${d.toLocaleString('ja-JP')}`)+` ・ ${fmtBytes(t.blob.size)}`+(adj?` ・ 音${adj>0?'+':''}${adj}ms`:'');
   const det=$('#plDetail');det.hidden=true;det.textContent=t.lenInfo?`${t.lenInfo}${t.blurUsed?'・ブラー'+t.blurUsed:''}`:'';
   $('#plMore').hidden=!t.lenInfo;$('#plMore').onclick=()=>{det.hidden=!det.hidden};
-  const canAdj=t.kind==='video'&&t.sync&&S.tracks.some(x=>x.id===t.trackId);$('#plAdj').hidden=!canAdj;$('#plAdj').onclick=()=>openAdjust(t);
+  const canAdj=t.kind==='video'&&t.sync&&S.tracks.some(x=>x.id===t.trackId);$('#plAdj').hidden=!canAdj;$('#plAdj').textContent=t.audioMissing?'音を入れ直す':'音ズレを直す';$('#plAdj').onclick=()=>openAdjust(t);
   const url=URL.createObjectURL(t.blob);PL.urls.push(url);
   if(t.kind==='video'){const v=document.createElement('video');v.src=url;v.controls=true;v.playsInline=true;v.loop=true;m.appendChild(v);fixDuration(v);v.play().catch(()=>{})}
   else{const i=document.createElement('img');i.src=url;m.appendChild(i)}
@@ -1612,12 +1649,12 @@ async function retimeTake(t,adjMs){const tr=S.tracks.find(x=>x.id===t.trackId);i
   out.ms={read:t1-t0,audio:t2-t1,build:performance.now()-t2};return out}
 const msTxt=ms=>ms<1000?Math.round(ms)+'ms':(ms/1000).toFixed(1)+'秒';
 /** 調整した動画を保存する。新しい記録を書き終えてから古い記録を消すので、途中で閉じても元の動画は残る */
-async function replaceTakeBlob(t,blob,sync,note){const nt={...t,id:uid(),blob,sync,saved:false,replacing:t.id,pending:true,lenInfo:(t.lenInfo||'')+(note?'\n'+note:'')};
+async function replaceTakeBlob(t,blob,sync,note){const nt={...t,id:uid(),blob,sync,saved:false,audioMissing:false,replacing:t.id,pending:true,lenInfo:(t.lenInfo||'')+(note?'\n'+note:'')};
   const t0=performance.now();if(await DB.put('takes',nt)==null)throw new Error('保存できませんでした（端末の空き容量を確認してください）');
   const chk=await DB.get('takes',nt.id);if(!chk||!chk.blob||chk.blob.size!==blob.size)throw new Error('保存を確認できませんでした');
   nt.pending=false;await DB.put('takes',nt);await DB.del('takes',t.id);delete nt.replacing;await DB.put('takes',nt);
   const i=S.takes.findIndex(x=>x.id===t.id);if(i>=0)S.takes[i]=nt;else S.takes.unshift(nt);updateLastThumb();nt.saveMs=performance.now()-t0;return nt}
-function openAdjust(t){$$('#plMedia video').forEach(v=>v.pause());let adj=t.sync.adjMs||0,made={adj,blob:t.blob},url=null,seq=0;
+function openAdjust(t){$$('#plMedia video').forEach(v=>v.pause());let adj=t.sync.adjMs||0,made={adj:t.audioMissing?null:adj,blob:t.blob},url=null,seq=0;
   const label=()=>{$('#adjV').textContent=adj>0?`${adj}ms 遅らせる`:adj<0?`${-adj}ms 早める`:'ずらさない';$('#adjR').value=adj;
     const tot=clamp((t.sync.syncMs||0)+adj,-500,500);$('#adjKeepL').textContent=`次回からもこの補正で撮る（設定の「音ズレ補正」を ${tot>0?'+':''}${tot}ms に）`};
   const show=(blob,keepPos)=>{const v=$('#adjVid');if(!v)return;const at=keepPos?v.currentTime:0;if(url)URL.revokeObjectURL(url);url=URL.createObjectURL(blob);v.src=url;
@@ -1635,13 +1672,13 @@ function openAdjust(t){$$('#plMedia video').forEach(v=>v.pause());let adj=t.sync
     <div class="muted small" id="adjStat" style="min-height:1.4em;margin-top:4px"></div></div>
   <label class="muted small" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="adjKeep"><span id="adjKeepL"></span></label>
   <div class="rv-btns"><button class="btn sec" style="flex:1" id="adjCancel">やめる</button><button class="btn pri" style="flex:1" id="adjOk">決定</button></div>`,()=>{seq++;clearTimeout(deb);if(url)URL.revokeObjectURL(url)});
-  label();show(t.blob,false);
+  label();show(t.blob,false);if(t.audioMissing)preview();
   $('#adjR').oninput=e=>{adj=parseInt(e.target.value,10)||0;label()};$('#adjR').onchange=()=>later();
   $$('.adjRow .btn').forEach(b=>b.onclick=()=>{adj=clamp(adj+parseInt(b.dataset.d,10),-500,500);label();later()});
   $('#adjCancel').onclick=()=>closeSheet();
   $('#adjOk').onclick=async()=>{const keep=$('#adjKeep').checked;
     let cur=t;
-    if(adj!==(t.sync.adjMs||0)){clearTimeout(deb);seq++;try{busy(true,'音を作り直しています…');const blob=made.adj===adj?made.blob:await retimeTake(t,adj);
+    if(adj!==(t.sync.adjMs||0)||t.audioMissing){clearTimeout(deb);seq++;try{busy(true,'音を作り直しています…');const blob=made.adj===adj?made.blob:await retimeTake(t,adj);
         busy(true,'保存しています…');const ms=blob.ms||{};
         cur=await replaceTakeBlob(t,blob,{...t.sync,adjMs:adj},'');
         cur.lenInfo=(t.lenInfo||'')+`\n音の調整${adj>0?'+':''}${adj}ms：音声${msTxt(ms.audio||0)}・組み立て${msTxt((ms.read||0)+(ms.build||0))}・保存${msTxt(cur.saveMs)}（${fmtBytes(blob.size)}）`;await DB.put('takes',cur)}
@@ -1740,6 +1777,12 @@ async function loadBackup(file){try{const d=JSON.parse(await file.text());if(d.a
     renderSettings();renderCamUI()}catch(e){toast('バックアップファイルを読み込めませんでした')}}
 
 /* ================= settings ================= */
+function openLog(){const txt=(localStorage.getItem(LOGK)||'（まだ記録がありません）').split('\n').reverse().join('\n');
+  openSheet(`<h3>診断ログ</h3><p class="muted small">録画や保存の流れの記録です（新しい順）。うまくいかなかったときは、スクショかコピーして送ってください。端末の外には送られません。</p>
+  <pre id="logTxt" style="white-space:pre-wrap;font-size:11.5px;line-height:1.5;max-height:52vh;overflow:auto;background:var(--bg2,#14141c);padding:10px;border-radius:10px;user-select:text;-webkit-user-select:text">${escapeHtml(txt)}</pre>
+  <div class="rv-btns"><button class="btn sec" style="flex:1" id="logCopy">コピー</button><button class="btn sec" style="flex:1" id="logClose">閉じる</button></div>`);
+  $('#logClose').onclick=()=>closeSheet();
+  $('#logCopy').onclick=async()=>{try{await navigator.clipboard.writeText(APP_VERSION+'\n'+navigator.userAgent+'\n'+txt);toast('コピーしました')}catch(e){toast('コピーできませんでした。スクショで送ってください')}}}
 function renderSettings(){const B=$('#settingsBody');
   const seg=(k,opts,jp)=>`<div class="seg" data-k="${k}">${opts.map(o=>`<button data-v="${o[0]}" class="${jp?'jp ':''}${String(ST[k])===String(o[0])?'on':''}">${o[1]}</button>`).join('')}</div>`;
   const tog=(k)=>`<div class="seg" data-k="${k}" data-bool="1"><button data-v="false" class="jp ${!ST[k]?'on':''}">オフ</button><button data-v="true" class="jp ${ST[k]?'on':''}">オン</button></div>`;
@@ -1782,13 +1825,15 @@ function renderSettings(){const B=$('#settingsBody');
   <a class="btn sec" style="width:100%;margin-top:10px;text-decoration:none" href="https://github.com/hakuryu0288/videomoon/releases/download/latest/otsuuchicam.apk">Androidアプリ版（テスト中）をダウンロード</a>
   <button class="btn sec" style="width:100%;margin-top:8px" id="showNotes">Androidアプリ版との違い</button>
   <button class="btn sec" style="width:100%;margin-top:8px;color:var(--rec)" id="wipe">保存したデータをすべて削除</button>
-  <p class="muted small" style="text-align:center;margin-top:16px">乙打ちカメラ ${APP_VERSION} ・ <a href="https://www.otsuuchi.com/" target="_blank" rel="noopener" style="color:var(--moon)">乙打ちドットコム</a></p>`;
+  <div style="text-align:center;margin-top:14px"><button class="chip" id="logBtn">診断ログを見る</button></div>
+  <p class="muted small" style="text-align:center;margin-top:10px">乙打ちカメラ ${APP_VERSION} ・ <a href="https://www.otsuuchi.com/" target="_blank" rel="noopener" style="color:var(--moon)">乙打ちドットコム</a></p>`;
   $$('#settingsBody .seg').forEach(s=>s.querySelectorAll('button').forEach(b=>b.onclick=()=>{const k=s.dataset.k;let v=b.dataset.v;
     if(s.dataset.bool)v=v==='true';else if(!isNaN(parseFloat(v))&&k!=='res'&&k!=='codec'&&k!=='aspect'&&k!=='recMethod'&&k!=='sess')v=parseFloat(v);ST[k]=v;saveST();
     if(k==='aspect'){setCanvasSize();if(VS.mode==='real')tryRealCamera()}if((k==='res'||k==='fps')&&VS.mode==='real')tryRealCamera();if(k==='sess'&&!S.rec){setPlaybackSession();if(AC){try{AC.close()}catch(e){}AC=null}}if(k==='fps'){VS.stream=null;if(!PRO.ae&&PRO.shut<ST.fps)PRO.shut=autoShutter()}renderSettings();renderCamUI()}));
   $$('#settingsBody input[data-r]').forEach(r=>r.oninput=()=>{ST[r.dataset.r]=parseFloat(r.value);saveST();if(r.dataset.r==='syncMs')$('#syncV').textContent=(ST.syncMs>0?'+':'')+ST.syncMs+' ms'});
   $('#bkSave').onclick=saveBackup;$('#bkLoad').onclick=()=>$('#bkFile').click();$('#bkFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)loadBackup(f)};
   $('#showNotes').onclick=()=>openSheet('<h3>Android版の仕様</h3>'+NOTES_ALL);
+  $('#logBtn').onclick=openLog;
   $('#wipe').onclick=()=>{openSheet('<h3>すべて削除しますか？</h3><p>音源・クリップ・撮影したテイクがこのブラウザから消えます。元に戻せません。</p><div class="rv-btns"><button class="btn sec" style="flex:1" id="wN">やめる</button><button class="btn pri" style="background:var(--rec);color:#fff" id="wY">削除する</button></div>');
     $('#wN').onclick=closeSheet;$('#wY').onclick=async()=>{await DB.clear('tracks');await DB.clear('takes');S.tracks=[];S.takes=[];S.buffers.clear();S.peaks.clear();setActiveClip(null);updateLastThumb();closeSheet();toast('削除しました')}}}
 
@@ -1817,7 +1862,7 @@ async function keepAwake(on){try{
   if(on){if(WL.s||document.visibilityState!=='visible')return;if(!('wakeLock' in navigator)){WL.err='非対応';return}
     WL.s=await navigator.wakeLock.request('screen');WL.err='';WL.s.addEventListener('release',()=>{WL.s=null})}
   else if(WL.s){const w=WL.s;WL.s=null;await w.release()}}catch(e){WL.s=null;WL.err=(e&&e.name)||'失敗'}}
-document.addEventListener('visibilitychange',()=>{
+document.addEventListener('visibilitychange',()=>{log('画面 '+(document.visibilityState==='visible'?'表示':'非表示（ロック・ホーム・他のアプリ）')+(S.rec?'・録画中':'')+(S.saving?'・保存中':''));
   if(document.visibilityState==='visible'){if(S.tab==='camera')keepAwake(true)}
   else if(S.rec){S.rec.hidden=true;stopRec('hidden')}}); // 録画中に画面が切り替わった・ロックされた：そこまでを保存する
 function showScreen(tab){if(S.rec)return;if(S.tab==='trim'&&tab!=='trim')stopTrim();S.tab=tab;$$('.screen').forEach(s=>s.classList.toggle('active',s.id==='scr-'+tab));
@@ -1839,7 +1884,7 @@ $('#rotBtn').onclick=()=>{phoneEl.classList.toggle('landscape');applyOrientation
 /* ================= offline ================= */
 // 電波がない場所でも起動できるように、アプリ本体を端末にキャッシュする
 const UPD={pending:false};
-const APP_VERSION='0.10.4（11/14 02:30）';
+const APP_VERSION='0.10.5（11/14 23:50）';
 if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location.hostname==='localhost')){
   const hadController=!!navigator.serviceWorker.controller;let reloading=false;
   window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(reg=>{
@@ -1852,7 +1897,7 @@ if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location
     // 撮影中・保存中・編集中は読み込み直さない。カメラ画面でも読み込み直さない（撮影の直前直後に消えると困るので）。
     // 代わりに、アプリが裏に回ったとき（ホームに戻る・ほかのアプリを開く）に切り替える
     const busyNow=()=>S.rec||S.counting||S.saving||S.tab==='trim'||S.tab==='camera'||$('#sheetLayer').classList.contains('open')||$('#busy').classList.contains('on')||$('#player').classList.contains('open');
-    const go=()=>{if(reloading)return;reloading=true;location.reload()};
+    const go=()=>{if(reloading)return;reloading=true;log('新しい版に切り替えるため読み込み直し');location.reload()};
     UPD.pending=true;
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&!S.rec&&!S.saving&&!$('#busy').classList.contains('on'))go()});
     if(!busyNow()){toast('新しいバージョンに更新します');setTimeout(()=>{if(!busyNow())go()},900)}
@@ -1860,7 +1905,9 @@ if('serviceWorker' in navigator&&!EMBED&&(location.protocol==='https:'||location
 
 /* ================= boot ================= */
 (async()=>{setInterval(()=>{const d=new Date();$('#sbTime').textContent=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')},10000);
+  log(`起動 ${APP_VERSION}・${navigator.serviceWorker&&navigator.serviceWorker.controller?'オフライン対応済み':'初回'}`);
   applyOrientation();updateFsChip();setCanvasSize();await DB.open();await loadTracks();await loadTakes();renderCamUI();showScreen('camera');
+  if(S.rawPending&&S.rawPending.length)setTimeout(recoverRaw,800);
   const real=await tryRealCamera();if(real)toast('カメラを使って撮影できます');
   if(!LS.get('welcomed',false)){openSheet(`<h3 class="brand"><span class="penlights" aria-hidden="true"><i></i><i></i><i></i><i></i></span>乙打ちカメラへようこそ</h3><p>好きな曲の好きな部分を流しながら、なめらかな60fpsで撮影できる動画カメラです。動画に入るのは流した音楽だけ。周りの雑音は入りません。</p><p class="muted small">撮った動画はこのブラウザに一時保存されます。残したいものは「写真アプリに保存」してください。</p>
    ${real?'':'<p class="muted small">このプレビューではカメラが使えないため、CGのデモ映像で撮影を体験できます。音楽は実際に流れて、撮った動画にも入ります。</p>'}
